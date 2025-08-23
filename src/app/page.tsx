@@ -38,6 +38,7 @@ export default function Dashboard() {
   const [data, setData] = useState<UsageResponse | null>(null);
   const [currency, setCurrency] = useState<Currency>('USD');
   const [language, setLanguage] = useState<'en' | 'hi'>('en');
+  const [timePeriod, setTimePeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily');
   const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -77,7 +78,7 @@ export default function Dashboard() {
           // Keep default rate as fallback
         }
       }
-      
+
       // Apply the same rate to all dates to avoid multiple API calls
       for (const day of usageData.daily) {
         rates[day.date] = fetchedRate;
@@ -170,24 +171,129 @@ export default function Dashboard() {
   //   }
   // };
 
+  const aggregateDataByWeek = (dailyData: any[]) => {
+    const weeklyData = new Map();
+
+    dailyData.forEach(day => {
+      const date = new Date(day.date);
+      // Get the Monday of the week (ISO week)
+      const dayOfWeek = date.getDay();
+      const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      const monday = new Date(date);
+      monday.setDate(date.getDate() + mondayOffset);
+      const weekKey = monday.toISOString().split('T')[0];
+
+      if (!weeklyData.has(weekKey)) {
+        weeklyData.set(weekKey, {
+          date: weekKey,
+          totalCost: 0,
+          totalTokens: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheCreationTokens: 0,
+          cacheReadTokens: 0,
+          count: 0
+        });
+      }
+
+      const weekData = weeklyData.get(weekKey);
+      weekData.totalCost += day.totalCost;
+      weekData.totalTokens += day.totalTokens;
+      weekData.inputTokens += day.inputTokens;
+      weekData.outputTokens += day.outputTokens;
+      weekData.cacheCreationTokens += day.cacheCreationTokens;
+      weekData.cacheReadTokens += day.cacheReadTokens;
+      weekData.count += 1;
+    });
+
+    return Array.from(weeklyData.values()).sort((a, b) => a.date.localeCompare(b.date));
+  };
+
+  const aggregateDataByMonth = (dailyData: any[]) => {
+    const monthlyData = new Map();
+
+    dailyData.forEach(day => {
+      const date = new Date(day.date);
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`;
+
+      if (!monthlyData.has(monthKey)) {
+        monthlyData.set(monthKey, {
+          date: monthKey,
+          totalCost: 0,
+          totalTokens: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheCreationTokens: 0,
+          cacheReadTokens: 0,
+          count: 0
+        });
+      }
+
+      const monthData = monthlyData.get(monthKey);
+      monthData.totalCost += day.totalCost;
+      monthData.totalTokens += day.totalTokens;
+      monthData.inputTokens += day.inputTokens;
+      monthData.outputTokens += day.outputTokens;
+      monthData.cacheCreationTokens += day.cacheCreationTokens;
+      monthData.cacheReadTokens += day.cacheReadTokens;
+      monthData.count += 1;
+    });
+
+    return Array.from(monthlyData.values()).sort((a, b) => a.date.localeCompare(b.date));
+  };
+
   const getChartData = () => {
     if (!data) return [];
-    return data.daily
+
+    let processedData = data.daily;
+
+    // Aggregate data based on time period
+    if (timePeriod === 'weekly') {
+      processedData = aggregateDataByWeek(data.daily);
+    } else if (timePeriod === 'monthly') {
+      processedData = aggregateDataByMonth(data.daily);
+    }
+
+    return processedData
       .slice()
-      .map(day => ({
-        date: new Date(day.date).toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', {
-          month: 'short',
-          day: 'numeric'
-        }),
-        cost: currency === 'INR' && exchangeRates[day.date]
-          ? day.totalCost * exchangeRates[day.date]
-          : day.totalCost,
-        tokens: day.totalTokens / 1000000,
-        inputTokens: day.inputTokens / 1000000,
-        outputTokens: day.outputTokens / 1000000,
-        cacheTokens: (day.cacheCreationTokens + day.cacheReadTokens) / 1000000,
-        originalDate: day.date
-      }));
+      .map(item => {
+        const date = new Date(item.date);
+        let dateLabel = '';
+
+        if (timePeriod === 'daily') {
+          dateLabel = date.toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', {
+            month: 'short',
+            day: 'numeric'
+          });
+        } else if (timePeriod === 'weekly') {
+          const endDate = new Date(date);
+          endDate.setDate(date.getDate() + 6);
+          dateLabel = `${date.toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', {
+            month: 'short',
+            day: 'numeric'
+          })} - ${endDate.toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', {
+            month: 'short',
+            day: 'numeric'
+          })}`;
+        } else if (timePeriod === 'monthly') {
+          dateLabel = date.toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', {
+            year: 'numeric',
+            month: 'long'
+          });
+        }
+
+        return {
+          date: dateLabel,
+          cost: currency === 'INR'
+            ? item.totalCost * currentRate  // Use current rate for all aggregated data
+            : item.totalCost,
+          tokens: item.totalTokens / 1000000,
+          inputTokens: item.inputTokens / 1000000,
+          outputTokens: item.outputTokens / 1000000,
+          cacheTokens: (item.cacheCreationTokens + item.cacheReadTokens) / 1000000,
+          originalDate: item.date
+        };
+      });
   };
 
   if (loading) {
@@ -282,6 +388,33 @@ export default function Dashboard() {
                     onClick={() => setCurrency('INR')}
                   >
                     ₹ INR
+                  </Button>
+                </div>
+
+                <div className="flex gap-2 items-center">
+                  <Button
+                    variant={timePeriod === 'daily' ? 'default' : 'secondary'}
+                    size="sm"
+                    onClick={() => setTimePeriod('daily')}
+                  >
+                    <Calendar className="w-4 h-4 mr-1" />
+                    {language === 'hi' ? 'दैनिक' : 'Daily'}
+                  </Button>
+                  <Button
+                    variant={timePeriod === 'weekly' ? 'default' : 'secondary'}
+                    size="sm"
+                    onClick={() => setTimePeriod('weekly')}
+                  >
+                    <Calendar className="w-4 h-4 mr-1" />
+                    {language === 'hi' ? 'साप्ताहिक' : 'Weekly'}
+                  </Button>
+                  <Button
+                    variant={timePeriod === 'monthly' ? 'default' : 'secondary'}
+                    size="sm"
+                    onClick={() => setTimePeriod('monthly')}
+                  >
+                    <Calendar className="w-4 h-4 mr-1" />
+                    {language === 'hi' ? 'मासिक' : 'Monthly'}
                   </Button>
                 </div>
               </div>
@@ -506,8 +639,18 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card>
                 <CardHeader>
-                  <CardTitle>{language === 'hi' ? `दैनिक लागत रुझान (${currency})` : `Daily Cost Trend (${currency})`}</CardTitle>
-                  <CardDescription>{language === 'hi' ? 'समय के साथ लागत विश्लेषण' : 'Cost analysis over time'}</CardDescription>
+                  <CardTitle>
+                    {language === 'hi'
+                      ? `${timePeriod === 'daily' ? 'दैनिक' : timePeriod === 'weekly' ? 'साप्ताहिक' : 'मासिक'} लागत रुझान (${currency})`
+                      : `${timePeriod === 'daily' ? 'Daily' : timePeriod === 'weekly' ? 'Weekly' : 'Monthly'} Cost Trend (${currency})`
+                    }
+                  </CardTitle>
+                  <CardDescription>
+                    {language === 'hi'
+                      ? `${timePeriod === 'daily' ? 'दैनिक' : timePeriod === 'weekly' ? 'साप्ताहिक' : 'मासिक'} लागत विश्लेषण`
+                      : `${timePeriod === 'daily' ? 'Daily' : timePeriod === 'weekly' ? 'Weekly' : 'Monthly'} cost analysis`
+                    }
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
@@ -569,8 +712,18 @@ export default function Dashboard() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>{language === 'hi' ? 'टोकन उपयोग' : 'Token Usage'}</CardTitle>
-                  <CardDescription>{language === 'hi' ? 'दैनिक टोकन खपत (मिलियन में)' : 'Daily token consumption (millions)'}</CardDescription>
+                  <CardTitle>
+                    {language === 'hi'
+                      ? `${timePeriod === 'daily' ? 'दैनिक' : timePeriod === 'weekly' ? 'साप्ताहिक' : 'मासिक'} टोकन उपयोग`
+                      : `${timePeriod === 'daily' ? 'Daily' : timePeriod === 'weekly' ? 'Weekly' : 'Monthly'} Token Usage`
+                    }
+                  </CardTitle>
+                  <CardDescription>
+                    {language === 'hi'
+                      ? `${timePeriod === 'daily' ? 'दैनिक' : timePeriod === 'weekly' ? 'साप्ताहिक' : 'मासिक'} टोकन खपत (मिलियन में)`
+                      : `${timePeriod === 'daily' ? 'Daily' : timePeriod === 'weekly' ? 'Weekly' : 'Monthly'} token consumption (millions)`
+                    }
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <ResponsiveContainer width="100%" height={300}>
@@ -722,41 +875,96 @@ export default function Dashboard() {
         {/* Recent Activity Table */}
         <Card>
           <CardHeader>
-            <CardTitle>{language === 'hi' ? 'हाल की गतिविधि' : 'Recent Activity'}</CardTitle>
-            <CardDescription>{language === 'hi' ? 'नवीनतम उपयोग डेटा और मेट्रिक्स' : 'Latest usage data and metrics'}</CardDescription>
+            <CardTitle>
+              {language === 'hi'
+                ? `${timePeriod === 'daily' ? 'दैनिक' : timePeriod === 'weekly' ? 'साप्ताहिक' : 'मासिक'} गतिविधि विवरण`
+                : `${timePeriod === 'daily' ? 'Daily' : timePeriod === 'weekly' ? 'Weekly' : 'Monthly'} Activity Details`
+              }
+            </CardTitle>
+            <CardDescription>
+              {language === 'hi'
+                ? `${timePeriod === 'daily' ? 'दैनिक' : timePeriod === 'weekly' ? 'साप्ताहिक' : 'मासिक'} उपयोग डेटा और टोकन विश्लेषण`
+                : `${timePeriod === 'daily' ? 'Daily' : timePeriod === 'weekly' ? 'Weekly' : 'Monthly'} usage data and token analysis`
+              }
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b">
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
+                    <th className="text-left py-3 px-2 text-xs font-medium text-muted-foreground">
                       {language === 'hi' ? 'दिनांक' : 'Date'}
                     </th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
-                      {language === 'hi' ? 'लागत' : 'Cost'}
+                    <th className="text-left py-3 px-2 text-xs font-medium text-muted-foreground">
+                      {language === 'hi' ? 'कुल लागत' : 'Total Cost'}
                     </th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
-                      {language === 'hi' ? 'टोकन' : 'Tokens'}
-                    </th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
+                    <th className="text-left py-3 px-2 text-xs font-medium text-muted-foreground">
                       {language === 'hi' ? 'इनपुट' : 'Input'}
                     </th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
+                    <th className="text-left py-3 px-2 text-xs font-medium text-muted-foreground">
                       {language === 'hi' ? 'आउटपुट' : 'Output'}
+                    </th>
+                    <th className="text-left py-3 px-2 text-xs font-medium text-muted-foreground">
+                      {language === 'hi' ? 'कैश निर्माण' : 'Cache Create'}
+                    </th>
+                    <th className="text-left py-3 px-2 text-xs font-medium text-muted-foreground">
+                      {language === 'hi' ? 'कैश रीड' : 'Cache Read'}
+                    </th>
+                    <th className="text-left py-3 px-2 text-xs font-medium text-muted-foreground">
+                      {language === 'hi' ? 'कुल टोकन' : 'Total Tokens'}
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {data.daily.slice(-8).reverse().map((day) => (
-                    <tr key={day.date} className="border-b hover:bg-muted/50">
-                      <td className="py-3 px-4 text-sm">{new Date(day.date).toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US')}</td>
-                      <td className="py-3 px-4 text-sm font-medium">{formatCurrency(day.totalCost, day.date)}</td>
-                      <td className="py-3 px-4 text-sm">{(day.totalTokens / 1000000).toFixed(1)}M</td>
-                      <td className="py-3 px-4 text-sm text-muted-foreground">{(day.inputTokens / 1000).toLocaleString()}K</td>
-                      <td className="py-3 px-4 text-sm text-muted-foreground">{(day.outputTokens / 1000).toLocaleString()}K</td>
-                    </tr>
-                  ))}
+                  {(() => {
+                    let dataToShow = [];
+                    if (timePeriod === 'daily' && data.daily) {
+                      dataToShow = data.daily.slice(-8).reverse();
+                    } else if (timePeriod === 'weekly' && data.daily) {
+                      const weeklyData = aggregateDataByWeek(data.daily);
+                      dataToShow = weeklyData.slice(-8).reverse();
+                    } else if (timePeriod === 'monthly' && data.daily) {
+                      const monthlyData = aggregateDataByMonth(data.daily);
+                      dataToShow = monthlyData.slice(-8).reverse();
+                    }
+
+                    return dataToShow.map((item, index) => (
+                      <tr key={item.date || index} className="border-b hover:bg-muted/50">
+                        <td className="py-3 px-2 text-xs">
+                          {timePeriod === 'daily'
+                            ? new Date(item.date).toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US')
+                            : timePeriod === 'weekly'
+                              ? (() => {
+                                const startDate = new Date(item.date);
+                                const endDate = new Date(startDate);
+                                endDate.setDate(startDate.getDate() + 6);
+                                return `${startDate.toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', { month: 'short', day: 'numeric' })} - ${endDate.toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', { month: 'short', day: 'numeric' })}`;
+                              })()
+                              : new Date(item.date).toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', { year: 'numeric', month: 'long' })
+                          }
+                        </td>
+                        <td className="py-3 px-2 text-xs font-medium">
+                          {formatCurrency(item.totalCost, item.date)}
+                        </td>
+                        <td className="py-3 px-2 text-xs text-muted-foreground">
+                          {(item.inputTokens / 1000).toLocaleString()}K
+                        </td>
+                        <td className="py-3 px-2 text-xs text-muted-foreground">
+                          {(item.outputTokens / 1000).toLocaleString()}K
+                        </td>
+                        <td className="py-3 px-2 text-xs text-muted-foreground">
+                          {(item.cacheCreationTokens / 1000).toLocaleString()}K
+                        </td>
+                        <td className="py-3 px-2 text-xs text-muted-foreground">
+                          {(item.cacheReadTokens / 1000).toLocaleString()}K
+                        </td>
+                        <td className="py-3 px-2 text-xs">
+                          {(item.totalTokens / 1000000).toFixed(1)}M
+                        </td>
+                      </tr>
+                    ));
+                  })()}
                 </tbody>
               </table>
             </div>
