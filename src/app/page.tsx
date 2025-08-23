@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { 
-  Activity, 
-  DollarSign, 
-  TrendingUp, 
-  Calendar, 
+import {
+  Activity,
+  DollarSign,
+  TrendingUp,
+  Calendar,
   Cpu,
   RefreshCw,
   Edit3,
@@ -52,7 +52,7 @@ export default function Dashboard() {
       if (process.env.NEXT_PUBLIC_API_KEY) {
         headers['x-api-key'] = process.env.NEXT_PUBLIC_API_KEY;
       }
-      
+
       const response = await fetch('/api/usage', { headers });
       if (!response.ok) {
         throw new Error(`API error: ${response.status}`);
@@ -64,7 +64,7 @@ export default function Dashboard() {
       // setRatesLoading(true);
       const rates: Record<string, number> = {};
       let lastValidRate = currentRate;
-      
+
       for (const day of usageData.daily) {
         try {
           const rateResponse = await fetch(`/api/exchange-rate?date=${day.date}`, { headers });
@@ -75,7 +75,7 @@ export default function Dashboard() {
           rates[day.date] = lastValidRate; // Use last valid rate instead of hardcoded 83
         }
       }
-      
+
       setExchangeRates(rates);
       setCurrentRate(lastValidRate);
       setInputRate(lastValidRate.toString());
@@ -100,8 +100,8 @@ export default function Dashboard() {
   const formatCurrency = (amount: number, date?: string) => {
     if (currency === 'INR') {
       // Use specific date rate, or current rate if no date provided
-      const rate = date && exchangeRates[date] 
-        ? exchangeRates[date] 
+      const rate = date && exchangeRates[date]
+        ? exchangeRates[date]
         : currentRate;
       const inrAmount = amount * rate;
       return `₹${inrAmount.toLocaleString('hi-IN', { maximumFractionDigits: 0 })}`;
@@ -154,13 +154,12 @@ export default function Dashboard() {
     if (!data) return [];
     return data.daily
       .slice()
-      .reverse()
       .map(day => ({
-        date: new Date(day.date).toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', { 
-          month: 'short', 
-          day: 'numeric' 
+        date: new Date(day.date).toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', {
+          month: 'short',
+          day: 'numeric'
         }),
-        cost: currency === 'INR' && exchangeRates[day.date] 
+        cost: currency === 'INR' && exchangeRates[day.date]
           ? day.totalCost * exchangeRates[day.date]
           : day.totalCost,
         tokens: day.totalTokens / 1000000,
@@ -228,7 +227,7 @@ export default function Dashboard() {
                 <p className="text-sm text-muted-foreground">{language === 'hi' ? 'वास्तविक समय उपयोग निगरानी' : 'Real-time usage monitoring'}</p>
               </div>
             </div>
-            
+
             <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
               <div className="flex flex-wrap justify-center gap-2">
                 <div className="flex gap-2">
@@ -247,7 +246,7 @@ export default function Dashboard() {
                     हिंदी
                   </Button>
                 </div>
-                
+
                 <div className="flex gap-2 items-center">
                   <Button
                     variant={currency === 'USD' ? 'default' : 'secondary'}
@@ -266,7 +265,7 @@ export default function Dashboard() {
                   </Button>
                 </div>
               </div>
-              
+
               {currency === 'INR' && (
                 <div className="flex items-center gap-2 text-sm border rounded-lg px-2 py-1 bg-background">
                   {!isEditingRate ? (
@@ -296,7 +295,7 @@ export default function Dashboard() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-auto p-1 text-green-600"
+                        className="h-auto p-1 text-chart-1"
                         onClick={handleRateChange}
                       >
                         <Check className="w-3 h-3" />
@@ -304,7 +303,7 @@ export default function Dashboard() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-auto p-1 text-red-600"
+                        className="h-auto p-1 text-destructive"
                         onClick={handleRateCancel}
                       >
                         <X className="w-3 h-3" />
@@ -313,7 +312,7 @@ export default function Dashboard() {
                   )}
                 </div>
               )}
-              
+
               <div className="flex gap-2">
                 <Button
                   variant="outline"
@@ -326,7 +325,7 @@ export default function Dashboard() {
                     <Sun className="w-4 h-4" />
                   )}
                 </Button>
-                
+
                 <Button
                   variant="outline"
                   size="sm"
@@ -430,15 +429,15 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {(() => {
                 const totalCost = data.totals.totalCost;
-                
+
                 const max100Savings = Math.max(0, 100 - totalCost);
                 const max200Savings = Math.max(0, 200 - totalCost);
-                const actualPlan = totalCost <= 100 
-                  ? 'Max $100' 
-                  : totalCost <= 200 
-                    ? 'Max $200' 
+                const actualPlan = totalCost <= 100
+                  ? 'Max $100'
+                  : totalCost <= 200
+                    ? 'Max $200'
                     : (language === 'hi' ? 'ओवर' : 'Over');
-                
+
                 return (
                   <>
                     <div className="space-y-2">
@@ -452,8 +451,8 @@ export default function Dashboard() {
                         {max100Savings > 0 ? formatCurrency(max100Savings) : formatCurrency(totalCost - 100)}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {max100Savings > 0 
-                          ? (language === 'hi' ? 'बचत' : 'Saving') 
+                        {max100Savings > 0
+                          ? (language === 'hi' ? 'बचत' : 'Saving')
                           : (language === 'hi' ? 'ओवर' : 'Over')}
                       </p>
                     </div>
@@ -463,8 +462,8 @@ export default function Dashboard() {
                         {max200Savings > 0 ? formatCurrency(max200Savings) : formatCurrency(totalCost - 200)}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {max200Savings > 0 
-                          ? (language === 'hi' ? 'बचत' : 'Saving') 
+                        {max200Savings > 0
+                          ? (language === 'hi' ? 'बचत' : 'Saving')
                           : (language === 'hi' ? 'ओवर' : 'Over')}
                       </p>
                     </div>
@@ -495,26 +494,26 @@ export default function Dashboard() {
                     <AreaChart data={chartData}>
                       <defs>
                         <linearGradient id="costGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
-                          <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                          <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="var(--chart-1)" stopOpacity={0} />
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis 
-                        dataKey="date" 
+                      <XAxis
+                        dataKey="date"
                         className="text-xs"
                         tickLine={false}
                         axisLine={false}
                       />
-                      <YAxis 
+                      <YAxis
                         className="text-xs"
                         tickLine={false}
                         axisLine={false}
-                        tickFormatter={(value) => 
+                        tickFormatter={(value) =>
                           currency === 'INR' ? `₹${value.toLocaleString()}` : `$${value}`
                         }
                       />
-                      <Tooltip 
+                      <Tooltip
                         content={({ active, payload, label }) => {
                           if (active && payload && payload.length) {
                             return (
@@ -524,8 +523,8 @@ export default function Dashboard() {
                                   <span className="text-xs font-medium">{label}</span>
                                   <span className="text-xs text-muted-foreground">{language === 'hi' ? 'लागत:' : 'Cost:'}</span>
                                   <span className="text-xs font-medium">
-                                    {currency === 'INR' 
-                                      ? `₹${(payload[0].value as number)?.toLocaleString()}` 
+                                    {currency === 'INR'
+                                      ? `₹${(payload[0].value as number)?.toLocaleString()}`
                                       : `$${(payload[0].value as number)?.toFixed(2)}`}
                                   </span>
                                 </div>
@@ -535,11 +534,11 @@ export default function Dashboard() {
                           return null;
                         }}
                       />
-                      <Area 
-                        type="monotone" 
-                        dataKey="cost" 
-                        stroke="hsl(var(--primary))" 
-                        fillOpacity={1} 
+                      <Area
+                        type="monotone"
+                        dataKey="cost"
+                        stroke="var(--chart-1)"
+                        fillOpacity={1}
                         fill="url(#costGradient)"
                         strokeWidth={2}
                       />
@@ -557,19 +556,19 @@ export default function Dashboard() {
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                      <XAxis 
-                        dataKey="date" 
+                      <XAxis
+                        dataKey="date"
                         className="text-xs"
                         tickLine={false}
                         axisLine={false}
                       />
-                      <YAxis 
+                      <YAxis
                         className="text-xs"
                         tickLine={false}
                         axisLine={false}
                         tickFormatter={(value) => `${value}M`}
                       />
-                      <Tooltip 
+                      <Tooltip
                         content={({ active, payload, label }) => {
                           if (active && payload && payload.length) {
                             return (
@@ -588,9 +587,9 @@ export default function Dashboard() {
                           return null;
                         }}
                       />
-                      <Bar 
-                        dataKey="tokens" 
-                        fill="hsl(var(--primary))" 
+                      <Bar
+                        dataKey="tokens"
+                        fill="var(--chart-2)"
                         radius={[4, 4, 0, 0]}
                       />
                     </BarChart>
@@ -612,7 +611,7 @@ export default function Dashboard() {
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                     <XAxis dataKey="date" className="text-xs" />
                     <YAxis className="text-xs" tickFormatter={(value) => `${value}M`} />
-                    <Tooltip 
+                    <Tooltip
                       content={({ active, payload, label }) => {
                         if (active && payload && payload.length) {
                           return (
@@ -632,30 +631,30 @@ export default function Dashboard() {
                         return null;
                       }}
                     />
-                    <Area 
-                      type="monotone" 
-                      dataKey="inputTokens" 
+                    <Area
+                      type="monotone"
+                      dataKey="inputTokens"
                       stackId="1"
-                      stroke="hsl(var(--primary))" 
-                      fill="hsl(var(--primary))" 
+                      stroke="var(--chart-1)"
+                      fill="var(--chart-1)"
                       fillOpacity={0.6}
                       name={language === 'hi' ? 'इनपुट टोकन' : 'Input Tokens'}
                     />
-                    <Area 
-                      type="monotone" 
-                      dataKey="outputTokens" 
+                    <Area
+                      type="monotone"
+                      dataKey="outputTokens"
                       stackId="1"
-                      stroke="hsl(var(--secondary))" 
-                      fill="hsl(var(--secondary))" 
+                      stroke="var(--chart-2)"
+                      fill="var(--chart-2)"
                       fillOpacity={0.6}
                       name={language === 'hi' ? 'आउटपुट टोकन' : 'Output Tokens'}
                     />
-                    <Area 
-                      type="monotone" 
-                      dataKey="cacheTokens" 
+                    <Area
+                      type="monotone"
+                      dataKey="cacheTokens"
                       stackId="1"
-                      stroke="hsl(var(--accent))" 
-                      fill="hsl(var(--accent))" 
+                      stroke="var(--chart-3)"
+                      fill="var(--chart-3)"
                       fillOpacity={0.6}
                       name={language === 'hi' ? 'कैश टोकन' : 'Cache Tokens'}
                     />
@@ -729,7 +728,7 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.daily.slice(0, 8).map((day) => (
+                  {data.daily.slice(-8).reverse().map((day) => (
                     <tr key={day.date} className="border-b hover:bg-muted/50">
                       <td className="py-3 px-4 text-sm">{new Date(day.date).toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US')}</td>
                       <td className="py-3 px-4 text-sm font-medium">{formatCurrency(day.totalCost, day.date)}</td>
