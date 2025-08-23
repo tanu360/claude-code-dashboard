@@ -12,7 +12,8 @@ import {
   Check,
   X,
   Sun,
-  Moon
+  Moon,
+  ChevronUp
 } from 'lucide-react';
 import {
   XAxis,
@@ -44,6 +45,7 @@ export default function Dashboard() {
   const [currentRate, setCurrentRate] = useState<number>(83);
   const [isEditingRate, setIsEditingRate] = useState(false);
   const [inputRate, setInputRate] = useState<string>('83');
+  const [showScrollTop, setShowScrollTop] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -60,37 +62,51 @@ export default function Dashboard() {
       const usageData = await response.json();
       setData(usageData);
 
-      // Fetch exchange rates for each date
-      // setRatesLoading(true);
+      // Fetch exchange rate only once per session unless manually refreshed
       const rates: Record<string, number> = {};
-      let lastValidRate = currentRate;
+      let fetchedRate = 83; // Default fallback
 
-      for (const day of usageData.daily) {
+      // Only fetch the most recent exchange rate instead of all dates
+      if (usageData.daily.length > 0) {
         try {
-          const rateResponse = await fetch(`/api/exchange-rate?date=${day.date}`, { headers });
+          const latestDate = usageData.daily[usageData.daily.length - 1].date; // Get latest date
+          const rateResponse = await fetch(`/api/exchange-rate?date=${latestDate}`, { headers });
           const rateData = await rateResponse.json();
-          rates[day.date] = rateData.rate;
-          lastValidRate = rateData.rate; // Update last valid rate
+          fetchedRate = rateData.rate;
         } catch {
-          rates[day.date] = lastValidRate; // Use last valid rate instead of hardcoded 83
+          // Keep default rate as fallback
         }
+      }
+      
+      // Apply the same rate to all dates to avoid multiple API calls
+      for (const day of usageData.daily) {
+        rates[day.date] = fetchedRate;
       }
 
       setExchangeRates(rates);
-      setCurrentRate(lastValidRate);
-      setInputRate(lastValidRate.toString());
-      // setRatesLoading(false);
+      setCurrentRate(fetchedRate);
+      setInputRate(fetchedRate.toString());
     } catch (error) {
       console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [currentRate]);
+  }, []); // Remove dependencies
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Handle scroll for scroll-to-top button
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowScrollTop(window.scrollY > 300);
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -126,6 +142,10 @@ export default function Dashboard() {
   const handleRateCancel = () => {
     setInputRate(currentRate.toString());
     setIsEditingRate(false);
+  };
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // Unused function - commenting out for now
@@ -517,7 +537,7 @@ export default function Dashboard() {
                         content={({ active, payload, label }) => {
                           if (active && payload && payload.length) {
                             return (
-                              <div className="rounded-lg border bg-background p-2 shadow-sm">
+                              <div className="rounded-lg border bg-background p-2">
                                 <div className="grid grid-cols-2 gap-2">
                                   <span className="text-xs text-muted-foreground">{language === 'hi' ? 'दिनांक:' : 'Date:'}</span>
                                   <span className="text-xs font-medium">{label}</span>
@@ -572,7 +592,7 @@ export default function Dashboard() {
                         content={({ active, payload, label }) => {
                           if (active && payload && payload.length) {
                             return (
-                              <div className="rounded-lg border bg-background p-2 shadow-sm">
+                              <div className="rounded-lg border bg-background p-2">
                                 <div className="grid grid-cols-2 gap-2">
                                   <span className="text-xs text-muted-foreground">{language === 'hi' ? 'दिनांक:' : 'Date:'}</span>
                                   <span className="text-xs font-medium">{label}</span>
@@ -615,7 +635,7 @@ export default function Dashboard() {
                       content={({ active, payload, label }) => {
                         if (active && payload && payload.length) {
                           return (
-                            <div className="rounded-lg border bg-background p-2 shadow-sm">
+                            <div className="rounded-lg border bg-background p-2">
                               <p className="text-xs font-medium mb-2">{label}</p>
                               {payload.map((entry, index) => (
                                 <div key={index} className="grid grid-cols-2 gap-2">
@@ -743,6 +763,17 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Scroll to Top Button */}
+      {showScrollTop && (
+        <button
+          onClick={scrollToTop}
+          className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50 w-12 h-12 bg-primary text-primary-foreground rounded-full hover:bg-primary/90 transition-all duration-300 hover:scale-110 flex items-center justify-center"
+          aria-label={language === 'hi' ? 'शीर्ष पर जाएं' : 'Scroll to top'}
+        >
+          <ChevronUp className="w-5 h-5" />
+        </button>
+      )}
     </div>
   );
 }
