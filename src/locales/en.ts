@@ -27,7 +27,7 @@ export const en = {
         fromLastWeek: "from last week",
         fromLastMonth: "from last month",
         fromYesterday: "from yesterday",
-        newUsage: "New usage",
+        newUsage: "New Usage",
         dailyAvg: "Daily avg",
         input: "Input",
         output: "Output",
