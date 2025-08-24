@@ -2,7 +2,7 @@ import type { LocaleKeys } from './en';
 
 export const hi: LocaleKeys = {
     // Navigation & Header
-    title: "Claude Code विश्लेषण पट्टिका",
+    title: "Claude Code विश्लेषण",
     subtitle: "रीयल-टाइम उपयोग और व्यय आँकड़े",
 
     // Time Period Controls

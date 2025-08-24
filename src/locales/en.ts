@@ -1,6 +1,6 @@
 export const en = {
     // Navigation & Header
-    title: "Claude Code Analytics Dashboard",
+    title: "Claude Code Analytics",
     subtitle: "Real-time usage analytics and cost insights",
 
     // Time Period Controls
