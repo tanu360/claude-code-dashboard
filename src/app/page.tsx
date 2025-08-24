@@ -13,7 +13,17 @@ import {
   X,
   Sun,
   Moon,
-  ChevronUp
+  ChevronUp,
+  ChevronDown,
+  ArrowUpDown,
+  CreditCard,
+  TrendingDown,
+  BarChart3,
+  PieChart,
+  Target,
+  AlertTriangle,
+  CheckCircle,
+  Info
 } from 'lucide-react';
 import {
   XAxis,
@@ -47,6 +57,8 @@ export default function Dashboard() {
   const [isEditingRate, setIsEditingRate] = useState(false);
   const [inputRate, setInputRate] = useState<string>('83');
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [sortField, setSortField] = useState<string>('date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   const fetchData = useCallback(async () => {
     try {
@@ -240,6 +252,70 @@ export default function Dashboard() {
     });
 
     return Array.from(monthlyData.values()).sort((a, b) => a.date.localeCompare(b.date));
+  };
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('desc');
+    }
+  };
+
+  const getSortedData = (dataToSort: any[]) => {
+    return [...dataToSort].sort((a, b) => {
+      let aValue, bValue;
+
+      switch (sortField) {
+        case 'date':
+          aValue = new Date(a.date).getTime();
+          bValue = new Date(b.date).getTime();
+          break;
+        case 'totalCost':
+          aValue = a.totalCost;
+          bValue = b.totalCost;
+          break;
+        case 'inputTokens':
+          aValue = a.inputTokens;
+          bValue = b.inputTokens;
+          break;
+        case 'outputTokens':
+          aValue = a.outputTokens;
+          bValue = b.outputTokens;
+          break;
+        case 'cacheCreationTokens':
+          aValue = a.cacheCreationTokens;
+          bValue = b.cacheCreationTokens;
+          break;
+        case 'cacheReadTokens':
+          aValue = a.cacheReadTokens;
+          bValue = b.cacheReadTokens;
+          break;
+        case 'totalTokens':
+          aValue = a.totalTokens;
+          bValue = b.totalTokens;
+          break;
+        default:
+          aValue = a.date;
+          bValue = b.date;
+      }
+
+      if (sortOrder === 'asc') {
+        return aValue > bValue ? 1 : -1;
+      } else {
+        return aValue < bValue ? 1 : -1;
+      }
+    });
+  };
+
+  const SortIcon = ({ field }: { field: string }) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="w-3 h-3 text-muted-foreground" />;
+    }
+    return sortOrder === 'asc'
+      ? <ChevronUp className="w-3 h-3 text-primary" />
+      : <ChevronDown className="w-3 h-3 text-primary" />;
   };
 
   const getChartData = () => {
@@ -570,62 +646,257 @@ export default function Dashboard() {
           </Card>
         </div>
 
-        {/* Savings Card */}
-        <Card className="mt-4">
-          <CardHeader>
-            <CardTitle>{language === 'hi' ? 'निश्चित योजना तुलना' : 'Fixed Plan Comparison'}</CardTitle>
-            <CardDescription>
-              {language === 'hi' ? 'Max $100/महीने और Max $200/महीने योजनाओं की तुलना में बचत' : 'Savings compared to Max $100/mo and Max $200/mo plans'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Enhanced Plan Comparison & Insights */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Plan Comparison Card */}
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <CreditCard className="w-5 h-5 text-primary" />
+                <CardTitle>{language === 'hi' ? 'योजना तुलना और वित्तीय अंतर्दृष्टि' : 'Plan Comparison & Financial Insights'}</CardTitle>
+              </div>
+              <CardDescription>
+                {language === 'hi' ? 'Claude Code प्राइसिंग प्लान और कॉस्ट ब्रेकडाउन का विस्तृत विश्लेषण' : 'Detailed analysis of Claude Code pricing plans and cost breakdown'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
               {(() => {
                 const totalCost = data.totals.totalCost;
-
                 const max100Savings = Math.max(0, 100 - totalCost);
                 const max200Savings = Math.max(0, 200 - totalCost);
-                const actualPlan = totalCost <= 100
-                  ? 'Max $100'
-                  : totalCost <= 200
-                    ? 'Max $200'
-                    : (language === 'hi' ? 'ओवर' : 'Over');
+                const currentUtilization100 = Math.min((totalCost / 100) * 100, 100);
+                const currentUtilization200 = Math.min((totalCost / 200) * 100, 100);
+
+                // Model pricing calculation (Claude Sonnet 4 pricing)
+                const inputTokenCost = (data.totals.inputTokens / 1000000) * 3; // $3 per million input tokens
+                const outputTokenCost = (data.totals.outputTokens / 1000000) * 15; // $15 per million output tokens
+                const cacheWriteCost = (data.totals.cacheCreationTokens / 1000000) * 3.75; // $3.75 per million cache write
+                const cacheReadCost = (data.totals.cacheReadTokens / 1000000) * 0.30; // $0.30 per million cache read
+
+                const actualPlan = totalCost <= 100 ? 'Max $100' : totalCost <= 200 ? 'Max $200' : 'Over Budget';
+                const planStatus = totalCost <= 100 ? 'success' : totalCost <= 200 ? 'warning' : 'danger';
 
                 return (
                   <>
-                    <div className="space-y-2">
-                      <p className="text-sm text-muted-foreground">{language === 'hi' ? 'वर्तमान बिलिंग अवधि कुल' : 'Current Billing Period Total'}</p>
-                      <p className="text-2xl font-bold">{formatCurrency(totalCost)}</p>
-                      <p className="text-xs text-muted-foreground">{actualPlan}</p>
+                    {/* Current Status Banner */}
+                    <div className={`p-4 rounded-lg border ${planStatus === 'success' ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' :
+                        planStatus === 'warning' ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800' :
+                          'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                      }`}>
+                      <div className="flex items-center gap-3">
+                        {planStatus === 'success' ? <CheckCircle className="w-5 h-5 text-green-600" /> :
+                          planStatus === 'warning' ? <AlertTriangle className="w-5 h-5 text-yellow-600" /> :
+                            <AlertTriangle className="w-5 h-5 text-red-600" />}
+                        <div>
+                          <h3 className="font-semibold text-sm">
+                            {language === 'hi' ? `वर्तमान स्थिति: ${actualPlan}` : `Current Status: ${actualPlan}`}
+                          </h3>
+                          <p className="text-xs text-muted-foreground">
+                            {language === 'hi'
+                              ? `कुल खर्च: ${formatCurrency(totalCost)} - ${planStatus === 'success' ? 'बजट के भीतर' : planStatus === 'warning' ? 'मध्यम उपयोग' : 'बजट से अधिक'}`
+                              : `Total Spend: ${formatCurrency(totalCost)} - ${planStatus === 'success' ? 'Within Budget' : planStatus === 'warning' ? 'Moderate Usage' : 'Over Budget'}`
+                            }
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <p className="text-sm text-muted-foreground">{language === 'hi' ? 'Max $100 के विरुद्ध' : 'vs Max $100'}</p>
-                      <p className={`text-2xl font-bold ${max100Savings > 0 ? 'text-primary' : 'text-destructive'}`}>
-                        {max100Savings > 0 ? formatCurrency(max100Savings) : formatCurrency(totalCost - 100)}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {max100Savings > 0
-                          ? (language === 'hi' ? 'बचत' : 'Saving')
-                          : (language === 'hi' ? 'ओवर' : 'Over')}
-                      </p>
+
+                    {/* Plan Comparison Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* Current Usage */}
+                      <div className="p-4 rounded-lg border bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Target className="w-4 h-4 text-blue-600" />
+                          <h4 className="font-semibold text-sm">{language === 'hi' ? 'वर्तमान उपयोग' : 'Current Usage'}</h4>
+                        </div>
+                        <p className="text-2xl font-bold text-blue-700 dark:text-blue-400">{formatCurrency(totalCost)}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {language === 'hi' ? 'इस बिलिंग अवधि में' : 'This billing period'}
+                        </p>
+                      </div>
+
+                      {/* Max $100 Plan */}
+                      <div className="p-4 rounded-lg border bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20">
+                        <div className="flex items-center gap-2 mb-3">
+                          <CreditCard className="w-4 h-4 text-green-600" />
+                          <h4 className="font-semibold text-sm">Max $100</h4>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm">Usage:</span>
+                            <span className="text-sm font-medium">{currentUtilization100.toFixed(1)}%</span>
+                          </div>
+                          <Progress value={currentUtilization100} className="h-2" />
+                          <p className={`text-lg font-bold ${max100Savings > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {max100Savings > 0
+                              ? `${formatCurrency(max100Savings)} ${language === 'hi' ? 'बचत' : 'saving'}`
+                              : `${formatCurrency(totalCost - 100)} ${language === 'hi' ? 'अधिक' : 'over'}`
+                            }
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Max $200 Plan */}
+                      <div className="p-4 rounded-lg border bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-900/20 dark:to-violet-900/20">
+                        <div className="flex items-center gap-2 mb-3">
+                          <CreditCard className="w-4 h-4 text-purple-600" />
+                          <h4 className="font-semibold text-sm">Max $200</h4>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm">Usage:</span>
+                            <span className="text-sm font-medium">{currentUtilization200.toFixed(1)}%</span>
+                          </div>
+                          <Progress value={currentUtilization200} className="h-2" />
+                          <p className={`text-lg font-bold ${max200Savings > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {max200Savings > 0
+                              ? `${formatCurrency(max200Savings)} ${language === 'hi' ? 'बचत' : 'saving'}`
+                              : `${formatCurrency(totalCost - 200)} ${language === 'hi' ? 'अधिक' : 'over'}`
+                            }
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <p className="text-sm text-muted-foreground">{language === 'hi' ? 'Max $200 के विरुद्ध' : 'vs Max $200'}</p>
-                      <p className={`text-2xl font-bold ${max200Savings > 0 ? 'text-primary' : 'text-destructive'}`}>
-                        {max200Savings > 0 ? formatCurrency(max200Savings) : formatCurrency(totalCost - 200)}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {max200Savings > 0
-                          ? (language === 'hi' ? 'बचत' : 'Saving')
-                          : (language === 'hi' ? 'ओवर' : 'Over')}
-                      </p>
+
+                    {/* Model-based Cost Breakdown */}
+                    <div className="border rounded-lg p-4 bg-gradient-to-r from-slate-50 to-gray-50 dark:from-slate-900/50 dark:to-gray-900/50">
+                      <div className="flex items-center gap-2 mb-4">
+                        <PieChart className="w-4 h-4 text-slate-600" />
+                        <h4 className="font-semibold">{language === 'hi' ? 'Claude Sonnet 4 मॉडल कॉस्ट ब्रेकडाउन' : 'Claude Sonnet 4 Model Cost Breakdown'}</h4>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="text-center p-3 rounded bg-white dark:bg-slate-800 border">
+                          <div className="flex items-center justify-center gap-1 mb-1">
+                            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                            <span className="text-xs font-medium">{language === 'hi' ? 'इनपुट' : 'Input'}</span>
+                          </div>
+                          <p className="text-sm font-bold">{formatCurrency(inputTokenCost)}</p>
+                          <p className="text-xs text-muted-foreground">{(data.totals.inputTokens / 1000000).toFixed(1)}M tokens</p>
+                        </div>
+                        <div className="text-center p-3 rounded bg-white dark:bg-slate-800 border">
+                          <div className="flex items-center justify-center gap-1 mb-1">
+                            <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                            <span className="text-xs font-medium">{language === 'hi' ? 'आउटपुट' : 'Output'}</span>
+                          </div>
+                          <p className="text-sm font-bold">{formatCurrency(outputTokenCost)}</p>
+                          <p className="text-xs text-muted-foreground">{(data.totals.outputTokens / 1000000).toFixed(1)}M tokens</p>
+                        </div>
+                        <div className="text-center p-3 rounded bg-white dark:bg-slate-800 border">
+                          <div className="flex items-center justify-center gap-1 mb-1">
+                            <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+                            <span className="text-xs font-medium">{language === 'hi' ? 'कैश राइट' : 'Cache Write'}</span>
+                          </div>
+                          <p className="text-sm font-bold">{formatCurrency(cacheWriteCost)}</p>
+                          <p className="text-xs text-muted-foreground">{(data.totals.cacheCreationTokens / 1000000).toFixed(1)}M tokens</p>
+                        </div>
+                        <div className="text-center p-3 rounded bg-white dark:bg-slate-800 border">
+                          <div className="flex items-center justify-center gap-1 mb-1">
+                            <div className="w-2 h-2 bg-cyan-500 rounded-full"></div>
+                            <span className="text-xs font-medium">{language === 'hi' ? 'कैश रीड' : 'Cache Read'}</span>
+                          </div>
+                          <p className="text-sm font-bold">{formatCurrency(cacheReadCost)}</p>
+                          <p className="text-xs text-muted-foreground">{(data.totals.cacheReadTokens / 1000000).toFixed(1)}M tokens</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 pt-3 border-t">
+                        <div className="flex justify-between items-center">
+                          <span className="font-medium">{language === 'hi' ? 'कुल मॉडल कॉस्ट:' : 'Total Model Cost:'}</span>
+                          <span className="font-bold text-lg">{formatCurrency(inputTokenCost + outputTokenCost + cacheWriteCost + cacheReadCost)}</span>
+                        </div>
+                      </div>
                     </div>
                   </>
                 );
               })()}
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+
+          {/* Quick Stats & Recommendations */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-primary" />
+                <CardTitle>{language === 'hi' ? 'मुख्य मेट्रिक्स' : 'Key Metrics'}</CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {(() => {
+                const totalCost = data.totals.totalCost;
+                const avgDailyCost = totalCost / data.daily.length;
+                const projectedMonthlyCost = avgDailyCost * 30;
+                const cacheEfficiency = ((data.totals.cacheReadTokens / (data.totals.cacheReadTokens + data.totals.inputTokens)) * 100) || 0;
+
+                return (
+                  <>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between p-3 rounded border bg-blue-50 dark:bg-blue-900/20">
+                        <div>
+                          <p className="text-sm font-medium">{language === 'hi' ? 'औसत दैनिक लागत' : 'Avg Daily Cost'}</p>
+                          <p className="text-lg font-bold text-blue-700 dark:text-blue-400">{formatCurrency(avgDailyCost)}</p>
+                        </div>
+                        <TrendingUp className="w-8 h-8 text-blue-500" />
+                      </div>
+
+                      <div className="flex items-center justify-between p-3 rounded border bg-purple-50 dark:bg-purple-900/20">
+                        <div>
+                          <p className="text-sm font-medium">{language === 'hi' ? 'अनुमानित मासिक' : 'Projected Monthly'}</p>
+                          <p className="text-lg font-bold text-purple-700 dark:text-purple-400">{formatCurrency(projectedMonthlyCost)}</p>
+                        </div>
+                        <Calendar className="w-8 h-8 text-purple-500" />
+                      </div>
+
+                      <div className="flex items-center justify-between p-3 rounded border bg-green-50 dark:bg-green-900/20">
+                        <div>
+                          <p className="text-sm font-medium">{language === 'hi' ? 'कैश दक्षता' : 'Cache Efficiency'}</p>
+                          <p className="text-lg font-bold text-green-700 dark:text-green-400">{cacheEfficiency.toFixed(1)}%</p>
+                        </div>
+                        <Cpu className="w-8 h-8 text-green-500" />
+                      </div>
+                    </div>
+
+                    {/* Recommendations */}
+                    <div className="border-t pt-4">
+                      <h4 className="font-semibold mb-3 flex items-center gap-2">
+                        <Info className="w-4 h-4" />
+                        {language === 'hi' ? 'सुझाव' : 'Recommendations'}
+                      </h4>
+                      <div className="space-y-2">
+                        {totalCost < 50 && (
+                          <div className="p-2 rounded bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+                            <p className="text-xs text-green-700 dark:text-green-400">
+                              {language === 'hi' ? '✓ बेहतरीन! आप बजट के भीतर हैं।' : '✓ Excellent! You\'re well within budget.'}
+                            </p>
+                          </div>
+                        )}
+                        {totalCost >= 80 && totalCost < 100 && (
+                          <div className="p-2 rounded bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800">
+                            <p className="text-xs text-yellow-700 dark:text-yellow-400">
+                              {language === 'hi' ? '⚠ Max $100 प्लान की सीमा के करीब।' : '⚠ Approaching Max $100 plan limit.'}
+                            </p>
+                          </div>
+                        )}
+                        {projectedMonthlyCost > 150 && (
+                          <div className="p-2 rounded bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+                            <p className="text-xs text-blue-700 dark:text-blue-400">
+                              {language === 'hi' ? '💡 Max $200 प्लान बेहतर हो सकता है।' : '💡 Consider Max $200 plan for better value.'}
+                            </p>
+                          </div>
+                        )}
+                        {cacheEfficiency > 80 && (
+                          <div className="p-2 rounded bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+                            <p className="text-xs text-green-700 dark:text-green-400">
+                              {language === 'hi' ? '🚀 उत्कृष्ट कैश उपयोग!' : '🚀 Excellent cache utilization!'}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Charts Section */}
         <Tabs defaultValue="overview" className="space-y-6">
@@ -893,26 +1164,75 @@ export default function Dashboard() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b">
-                    <th className="text-left py-3 px-2 text-xs font-medium text-muted-foreground">
-                      {language === 'hi' ? 'दिनांक' : 'Date'}
+                    <th
+                      className="text-left py-3 px-2 text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors select-none"
+                      onClick={() => handleSort('date')}
+                    >
+                      <div className="flex items-center gap-1">
+                        <Calendar className="w-3 h-3" />
+                        {language === 'hi' ? 'दिनांक' : 'Date'}
+                        <SortIcon field="date" />
+                      </div>
                     </th>
-                    <th className="text-left py-3 px-2 text-xs font-medium text-muted-foreground">
-                      {language === 'hi' ? 'कुल लागत' : 'Total Cost'}
+                    <th
+                      className="text-left py-3 px-2 text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors select-none"
+                      onClick={() => handleSort('totalCost')}
+                    >
+                      <div className="flex items-center gap-1">
+                        <DollarSign className="w-3 h-3 text-green-600" />
+                        {language === 'hi' ? 'कुल लागत' : 'Total Cost'}
+                        <SortIcon field="totalCost" />
+                      </div>
                     </th>
-                    <th className="text-left py-3 px-2 text-xs font-medium text-muted-foreground">
-                      {language === 'hi' ? 'इनपुट' : 'Input'}
+                    <th
+                      className="text-left py-3 px-2 text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors select-none"
+                      onClick={() => handleSort('inputTokens')}
+                    >
+                      <div className="flex items-center gap-1">
+                        <TrendingUp className="w-3 h-3 text-blue-500" />
+                        {language === 'hi' ? 'इनपुट' : 'Input'}
+                        <SortIcon field="inputTokens" />
+                      </div>
                     </th>
-                    <th className="text-left py-3 px-2 text-xs font-medium text-muted-foreground">
-                      {language === 'hi' ? 'आउटपुट' : 'Output'}
+                    <th
+                      className="text-left py-3 px-2 text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors select-none"
+                      onClick={() => handleSort('outputTokens')}
+                    >
+                      <div className="flex items-center gap-1">
+                        <Activity className="w-3 h-3 text-purple-500" />
+                        {language === 'hi' ? 'आउटपुट' : 'Output'}
+                        <SortIcon field="outputTokens" />
+                      </div>
                     </th>
-                    <th className="text-left py-3 px-2 text-xs font-medium text-muted-foreground">
-                      {language === 'hi' ? 'कैश निर्माण' : 'Cache Create'}
+                    <th
+                      className="text-left py-3 px-2 text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors select-none"
+                      onClick={() => handleSort('cacheCreationTokens')}
+                    >
+                      <div className="flex items-center gap-1">
+                        <Cpu className="w-3 h-3 text-orange-500" />
+                        {language === 'hi' ? 'कैश निर्माण' : 'Cache Create'}
+                        <SortIcon field="cacheCreationTokens" />
+                      </div>
                     </th>
-                    <th className="text-left py-3 px-2 text-xs font-medium text-muted-foreground">
-                      {language === 'hi' ? 'कैश रीड' : 'Cache Read'}
+                    <th
+                      className="text-left py-3 px-2 text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors select-none"
+                      onClick={() => handleSort('cacheReadTokens')}
+                    >
+                      <div className="flex items-center gap-1">
+                        <RefreshCw className="w-3 h-3 text-cyan-500" />
+                        {language === 'hi' ? 'कैश रीड' : 'Cache Read'}
+                        <SortIcon field="cacheReadTokens" />
+                      </div>
                     </th>
-                    <th className="text-left py-3 px-2 text-xs font-medium text-muted-foreground">
-                      {language === 'hi' ? 'कुल टोकन' : 'Total Tokens'}
+                    <th
+                      className="text-left py-3 px-2 text-xs font-medium text-muted-foreground cursor-pointer hover:text-foreground transition-colors select-none"
+                      onClick={() => handleSort('totalTokens')}
+                    >
+                      <div className="flex items-center gap-1">
+                        <Activity className="w-3 h-3 text-indigo-500" />
+                        {language === 'hi' ? 'कुल टोकन' : 'Total Tokens'}
+                        <SortIcon field="totalTokens" />
+                      </div>
                     </th>
                   </tr>
                 </thead>
@@ -920,47 +1240,64 @@ export default function Dashboard() {
                   {(() => {
                     let dataToShow = [];
                     if (timePeriod === 'daily' && data.daily) {
-                      dataToShow = data.daily.slice(-8).reverse();
+                      dataToShow = data.daily.slice(-15); // Show more rows for better sorting demo
                     } else if (timePeriod === 'weekly' && data.daily) {
                       const weeklyData = aggregateDataByWeek(data.daily);
-                      dataToShow = weeklyData.slice(-8).reverse();
+                      dataToShow = weeklyData.slice(-15);
                     } else if (timePeriod === 'monthly' && data.daily) {
                       const monthlyData = aggregateDataByMonth(data.daily);
-                      dataToShow = monthlyData.slice(-8).reverse();
+                      dataToShow = monthlyData.slice(-15);
                     }
 
-                    return dataToShow.map((item, index) => (
-                      <tr key={item.date || index} className="border-b hover:bg-muted/50">
+                    // Apply sorting
+                    const sortedData = getSortedData(dataToShow);
+
+                    return sortedData.map((item, index) => (
+                      <tr key={item.date || index} className="border-b hover:bg-muted/50 transition-colors">
                         <td className="py-3 px-2 text-xs">
-                          {timePeriod === 'daily'
-                            ? new Date(item.date).toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US')
-                            : timePeriod === 'weekly'
-                              ? (() => {
-                                const startDate = new Date(item.date);
-                                const endDate = new Date(startDate);
-                                endDate.setDate(startDate.getDate() + 6);
-                                return `${startDate.toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', { month: 'short', day: 'numeric' })} - ${endDate.toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', { month: 'short', day: 'numeric' })}`;
-                              })()
-                              : new Date(item.date).toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', { year: 'numeric', month: 'long' })
-                          }
+                          <div className="flex items-center gap-1">
+                            {timePeriod === 'daily'
+                              ? new Date(item.date).toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US')
+                              : timePeriod === 'weekly'
+                                ? (() => {
+                                  const startDate = new Date(item.date);
+                                  const endDate = new Date(startDate);
+                                  endDate.setDate(startDate.getDate() + 6);
+                                  return `${startDate.toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', { month: 'short', day: 'numeric' })} - ${endDate.toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', { month: 'short', day: 'numeric' })}`;
+                                })()
+                                : new Date(item.date).toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', { year: 'numeric', month: 'long' })
+                            }
+                          </div>
                         </td>
-                        <td className="py-3 px-2 text-xs font-medium">
-                          {formatCurrency(item.totalCost, item.date)}
-                        </td>
-                        <td className="py-3 px-2 text-xs text-muted-foreground">
-                          {(item.inputTokens / 1000).toLocaleString()}K
-                        </td>
-                        <td className="py-3 px-2 text-xs text-muted-foreground">
-                          {(item.outputTokens / 1000).toLocaleString()}K
-                        </td>
-                        <td className="py-3 px-2 text-xs text-muted-foreground">
-                          {(item.cacheCreationTokens / 1000).toLocaleString()}K
-                        </td>
-                        <td className="py-3 px-2 text-xs text-muted-foreground">
-                          {(item.cacheReadTokens / 1000).toLocaleString()}K
+                        <td className="py-3 px-2 text-xs font-semibold">
+                          <span className="text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded-md">
+                            {formatCurrency(item.totalCost, item.date)}
+                          </span>
                         </td>
                         <td className="py-3 px-2 text-xs">
-                          {(item.totalTokens / 1000000).toFixed(1)}M
+                          <span className="text-blue-600 dark:text-blue-400 font-medium">
+                            {(item.inputTokens / 1000).toLocaleString()}K
+                          </span>
+                        </td>
+                        <td className="py-3 px-2 text-xs">
+                          <span className="text-purple-600 dark:text-purple-400 font-medium">
+                            {(item.outputTokens / 1000).toLocaleString()}K
+                          </span>
+                        </td>
+                        <td className="py-3 px-2 text-xs">
+                          <span className="text-orange-600 dark:text-orange-400 font-medium">
+                            {(item.cacheCreationTokens / 1000).toLocaleString()}K
+                          </span>
+                        </td>
+                        <td className="py-3 px-2 text-xs">
+                          <span className="text-cyan-600 dark:text-cyan-400 font-medium">
+                            {(item.cacheReadTokens / 1000).toLocaleString()}K
+                          </span>
+                        </td>
+                        <td className="py-3 px-2 text-xs">
+                          <span className="text-indigo-600 dark:text-indigo-400 font-semibold bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1 rounded-md">
+                            {(item.totalTokens / 1000000).toFixed(1)}M
+                          </span>
                         </td>
                       </tr>
                     ));
