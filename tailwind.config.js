@@ -50,6 +50,18 @@ module.exports = {
           DEFAULT: "var(--card)",
           foreground: "var(--card-foreground)",
         },
+        success: {
+          DEFAULT: "var(--success)",
+          foreground: "var(--success-foreground)",
+        },
+        magenta: {
+          DEFAULT: "var(--magenta)",
+          foreground: "var(--magenta-foreground)",
+        },
+        rose: {
+          DEFAULT: "var(--rose)",
+          foreground: "var(--rose-foreground)",
+        },
         chart: {
           1: "var(--chart-1)",
           2: "var(--chart-2)",

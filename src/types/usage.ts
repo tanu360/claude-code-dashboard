@@ -1,3 +1,12 @@
+export interface ModelBreakdown {
+  modelName: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  cost: number;
+}
+
 export interface DailyUsage {
   date: string;
   inputTokens: number;
@@ -6,6 +15,8 @@ export interface DailyUsage {
   cacheReadTokens: number;
   totalTokens: number;
   totalCost: number;
+  modelsUsed?: string[];
+  modelBreakdowns?: ModelBreakdown[];
 }
 
 export interface UsageResponse {
