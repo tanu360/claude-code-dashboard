@@ -41,7 +41,7 @@ A comprehensive Next.js dashboard for monitoring Claude usage analytics, cost in
 - Theme switching
 - Responsive design for all devices
 
-## � Screenshots
+## 📷 Screenshots
 
 ### Light Theme
 
@@ -63,7 +63,7 @@ A comprehensive Next.js dashboard for monitoring Claude usage analytics, cost in
   <p><em>Analytics View - Dark Theme</em></p>
 </div>
 
-## �🛠️ Tech Stack
+## 🛠️ Tech Stack
 
 - **Framework**: Next.js 15.3.3
 - **Language**: TypeScript 5.8.3
