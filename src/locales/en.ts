@@ -22,7 +22,7 @@ export const en = {
         totalTokens: "Total Tokens",
         cacheEfficiency: "Cache Efficiency",
         activeDays: "Active Days",
-        processingPower: "Processing power",
+        processingPower: "Processing Power",
         insufficientData: "Insufficient data",
         fromLastWeek: "from last week",
         fromLastMonth: "from last month",
