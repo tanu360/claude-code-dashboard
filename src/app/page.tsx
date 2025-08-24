@@ -1031,7 +1031,6 @@ export default function Dashboard() {
                                   day.modelsUsed.forEach(model => allModelsUsed.add(model));
                                 }
                               });
-                              const diversity = allModelsUsed.size > 1 ? 'Models Used' : 'Model Used';
                               return `${allModelsUsed.size} ${allModelsUsed.size > 1 ? t.keyMetrics.modelsUsed : t.keyMetrics.modelUsed}`;
                             })()}
                           </p>
