@@ -30,7 +30,8 @@ import {
   Hash,
   Timer,
   Lightbulb,
-  Zap
+  Zap,
+  Monitor
 } from 'lucide-react';
 import {
   XAxis,
@@ -534,12 +535,29 @@ export default function Dashboard() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+                  onClick={() => {
+                    if (theme === 'light') {
+                      setTheme('dark');
+                    } else if (theme === 'dark') {
+                      setTheme('system');
+                    } else {
+                      setTheme('light');
+                    }
+                  }}
+                  title={
+                    theme === 'light' 
+                      ? 'Switch to dark mode' 
+                      : theme === 'dark' 
+                      ? 'Switch to system theme' 
+                      : 'Switch to light mode'
+                  }
                 >
                   {theme === 'light' ? (
+                    <Sun className="w-4 h-4" />
+                  ) : theme === 'dark' ? (
                     <Moon className="w-4 h-4" />
                   ) : (
-                    <Sun className="w-4 h-4" />
+                    <Monitor className="w-4 h-4" />
                   )}
                 </Button>
 
