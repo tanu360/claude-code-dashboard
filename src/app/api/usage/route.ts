@@ -7,7 +7,7 @@ const execAsync = promisify(exec);
 export async function GET() {
   try {
     // Pin ccusage version for security
-    const { stdout } = await execAsync('npx ccusage@latest daily --json --mode auto');
+    const { stdout } = await execAsync('npx ccusage daily --json');
     const data = JSON.parse(stdout);
     return NextResponse.json(data);
   } catch (error) {
