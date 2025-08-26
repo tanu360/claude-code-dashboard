@@ -158,6 +158,16 @@ export default function Dashboard() {
     return `$${amount.toFixed(2)}`;
   };
 
+  const formatTokenCount = (count: number): string => {
+    if (count < 1000) {
+      return count.toLocaleString();
+    } else if (count < 1000000) {
+      return `${(count / 1000).toFixed(2)}K`;
+    } else {
+      return `${(count / 1000000).toFixed(2)}M`;
+    }
+  };
+
   const handleRateChange = () => {
     const newRate = parseFloat(inputRate);
     if (!isNaN(newRate) && newRate > 0) {
@@ -700,7 +710,7 @@ export default function Dashboard() {
                   <p className="text-sm font-medium text-muted-foreground">
                     {t.stats.totalTokens}
                   </p>
-                  <p className="text-3xl font-bold tracking-tight">{(data.totals.totalTokens / 1000000).toFixed(1)}M</p>
+                  <p className="text-3xl font-bold tracking-tight">{formatTokenCount(data.totals.totalTokens)}</p>
                   <div className="flex items-center gap-2 text-xs">
                     <Cpu className="w-3 h-3" />
                     <span className="text-muted-foreground">
@@ -708,7 +718,7 @@ export default function Dashboard() {
                     </span>
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {t.stats.input}: <span className="text-sm font-bold">{((data.totals.inputTokens || 0) / 1000000).toFixed(1)}M</span> • {t.stats.output}: <span className="text-sm font-bold">{((data.totals.outputTokens || 0) / 1000000).toFixed(1)}M</span>
+                    {t.stats.input}: <span className="text-sm font-bold">{formatTokenCount(data.totals.inputTokens || 0)}</span> • {t.stats.output}: <span className="text-sm font-bold">{formatTokenCount(data.totals.outputTokens || 0)}</span>
                   </div>
                 </div>
                 <div>
@@ -748,7 +758,7 @@ export default function Dashboard() {
                     </span>
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {t.stats.read}: <span className="text-sm font-bold">{((data.totals.cacheReadTokens || 0) / 1000000).toFixed(1)}M</span> • {t.stats.write}: <span className="text-sm font-bold">{((data.totals.cacheCreationTokens || 0) / 1000000).toFixed(1)}M</span>
+                    {t.stats.read}: <span className="text-sm font-bold">{formatTokenCount(data.totals.cacheReadTokens || 0)}</span> • {t.stats.write}: <span className="text-sm font-bold">{formatTokenCount(data.totals.cacheCreationTokens || 0)}</span>
                   </div>
                 </div>
                 <div>
