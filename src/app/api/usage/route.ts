@@ -4,10 +4,27 @@ import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
+async function checkAndInstallCcusage() {
+  try {
+    // Check if ccusage is available globally
+    await execAsync('ccusage --version');
+    return 'ccusage';
+  } catch (error) {
+    // ccusage not found, install globally and use it
+    try {
+      await execAsync('npm install -g ccusage');
+      return 'ccusage';
+    } catch (installError) {
+      // Fallback to npx if global install fails
+      return 'npx ccusage';
+    }
+  }
+}
+
 export async function GET() {
   try {
-    // Pin ccusage version for security
-    const { stdout } = await execAsync('npx ccusage daily --json');
+    const ccusageCommand = await checkAndInstallCcusage();
+    const { stdout } = await execAsync(`${ccusageCommand} daily --json`);
     const data = JSON.parse(stdout);
     return NextResponse.json(data);
   } catch (error) {
