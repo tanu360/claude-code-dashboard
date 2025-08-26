@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 
 type Theme = 'light' | 'dark' | 'system';
 
@@ -31,12 +31,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   };
 
   // Resolve the actual theme to apply
-  const resolveTheme = (themePreference: Theme): 'light' | 'dark' => {
+  const resolveTheme = useCallback((themePreference: Theme): 'light' | 'dark' => {
     if (themePreference === 'system') {
       return getSystemTheme();
     }
     return themePreference;
-  };
+  }, []);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') as Theme;
@@ -46,7 +46,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const resolved = resolveTheme(themeToUse);
     setActualTheme(resolved);
     setMounted(true);
-  }, []);
+  }, [resolveTheme]);
 
   useEffect(() => {
     // Always listen for system theme changes
@@ -69,7 +69,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     
     const resolved = resolveTheme(theme);
     setActualTheme(resolved);
-  }, [theme, mounted]);
+  }, [theme, mounted, resolveTheme]);
 
   // Apply the theme to the document
   useEffect(() => {
