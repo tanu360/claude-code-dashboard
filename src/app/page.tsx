@@ -371,10 +371,10 @@ export default function Dashboard() {
           cost: currency === 'INR'
             ? item.totalCost * currentRate  // Use current rate for all aggregated data
             : item.totalCost,
-          tokens: item.totalTokens / 1000000,
-          inputTokens: item.inputTokens / 1000000,
-          outputTokens: item.outputTokens / 1000000,
-          cacheTokens: (item.cacheCreationTokens + item.cacheReadTokens) / 1000000,
+          tokens: item.totalTokens,
+          inputTokens: item.inputTokens,
+          outputTokens: item.outputTokens,
+          cacheTokens: (item.cacheCreationTokens + item.cacheReadTokens),
           originalDate: item.date
         };
       });
@@ -555,11 +555,11 @@ export default function Dashboard() {
                     }
                   }}
                   title={
-                    theme === 'light' 
-                      ? 'Switch to dark mode' 
-                      : theme === 'dark' 
-                      ? 'Switch to system theme' 
-                      : 'Switch to light mode'
+                    theme === 'light'
+                      ? 'Switch to dark mode'
+                      : theme === 'dark'
+                        ? 'Switch to system theme'
+                        : 'Switch to light mode'
                   }
                 >
                   {theme === 'light' ? (
@@ -1301,7 +1301,7 @@ export default function Dashboard() {
                               className="text-xs"
                               tickLine={false}
                               axisLine={false}
-                              tickFormatter={(value) => `${value}M`}
+                              tickFormatter={(value) => `${value}`}
                             />
                             <Tooltip
                               content={({ active, payload, label }) => {
@@ -1313,7 +1313,7 @@ export default function Dashboard() {
                                         <span className="text-xs font-medium">{label}</span>
                                         <span className="text-xs text-muted-foreground">{t.activity.tokens}:</span>
                                         <span className="text-xs font-medium">
-                                          {(payload[0].value as number)?.toFixed(1)}M
+                                          {(payload[0].value as number)?.toLocaleString()}
                                         </span>
                                       </div>
                                     </div>
@@ -1436,7 +1436,7 @@ export default function Dashboard() {
                                       <div key={index} className="grid grid-cols-2 gap-2">
                                         <span className="text-xs text-muted-foreground">{entry.name}:</span>
                                         <span className="text-xs font-medium">
-                                          {(entry.value as number)?.toFixed(1)}M
+                                          {(entry.value as number)?.toLocaleString()}
                                         </span>
                                       </div>
                                     ))}
@@ -1450,8 +1450,8 @@ export default function Dashboard() {
                             type="monotone"
                             dataKey="inputTokens"
                             stackId="1"
-                            stroke="var(--chart-1)"
-                            fill="var(--chart-1)"
+                            stroke="var(--chart-4)"
+                            fill="var(--chart-4)"
                             fillOpacity={0.6}
                             name={t.charts.inputTokens}
                           />
@@ -1459,8 +1459,8 @@ export default function Dashboard() {
                             type="monotone"
                             dataKey="outputTokens"
                             stackId="1"
-                            stroke="var(--chart-2)"
-                            fill="var(--chart-2)"
+                            stroke="var(--chart-3)"
+                            fill="var(--chart-3)"
                             fillOpacity={0.6}
                             name={t.charts.outputTokens}
                           />
@@ -1468,8 +1468,8 @@ export default function Dashboard() {
                             type="monotone"
                             dataKey="cacheTokens"
                             stackId="1"
-                            stroke="var(--chart-3)"
-                            fill="var(--chart-3)"
+                            stroke="var(--chart-2)"
+                            fill="var(--chart-2)"
                             fillOpacity={0.6}
                             name={t.charts.cacheTokens}
                           />
