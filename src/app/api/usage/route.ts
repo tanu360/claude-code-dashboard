@@ -9,12 +9,12 @@ async function checkAndInstallCcusage() {
     // Check if ccusage is available globally
     await execAsync('ccusage --version');
     return 'ccusage';
-  } catch (error) {
+  } catch {
     // ccusage not found, install globally and use it
     try {
       await execAsync('npm install -g ccusage');
       return 'ccusage';
-    } catch (installError) {
+    } catch {
       // Fallback to npx if global install fails
       return 'npx ccusage';
     }

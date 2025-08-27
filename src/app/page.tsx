@@ -1222,7 +1222,9 @@ export default function Dashboard() {
                       </CardHeader>
                       <CardContent>
                         <ResponsiveContainer width="100%" height={300}>
-                          <AreaChart data={chartData}>
+                          <AreaChart
+                            data={chartData}
+                            margin={{ right: 20 }}>
                             <defs>
                               <linearGradient id="costGradient" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="5%" stopColor="var(--chart-1)" stopOpacity={0.3} />
@@ -1237,9 +1239,11 @@ export default function Dashboard() {
                               axisLine={false}
                             />
                             <YAxis
+                              width={80}
                               className="text-xs"
                               tickLine={false}
                               axisLine={false}
+
                               tickFormatter={(value) =>
                                 currency === 'INR' ? `₹${value.toLocaleString()}` : `$${value}`
                               }
@@ -1289,7 +1293,9 @@ export default function Dashboard() {
                       </CardHeader>
                       <CardContent>
                         <ResponsiveContainer width="100%" height={300}>
-                          <BarChart data={chartData}>
+                          <BarChart
+                            data={chartData}
+                            margin={{ right: 20 }}>
                             <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                             <XAxis
                               dataKey="date"
@@ -1301,6 +1307,7 @@ export default function Dashboard() {
                               className="text-xs"
                               tickLine={false}
                               axisLine={false}
+                              width={80}
                               tickFormatter={(value) => `${value}`}
                             />
                             <Tooltip
