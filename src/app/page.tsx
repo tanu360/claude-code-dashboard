@@ -959,8 +959,11 @@ export default function Dashboard() {
                         });
 
                         const getModelDisplayName = (modelName: string) => {
-                          if (modelName.includes('sonnet-4')) return t.models.claudeSonnet4;
+                          if (modelName.includes('opus-4-1')) return t.models.claudeOpus41;
+                          if (modelName.includes('sonnet-4-5')) return t.models.claudeSonnet45;
+                          if (modelName.includes('haiku-4-5')) return t.models.claudeHaiku45;
                           if (modelName.includes('opus-4')) return t.models.claudeOpus4;
+                          if (modelName.includes('sonnet-4')) return t.models.claudeSonnet4;
                           if (modelName.includes('haiku')) return t.models.claudeHaiku;
                           return modelName.replace(/claude-|-\d{8}/g, '').replace(/-/g, ' ').toUpperCase();
                         };
