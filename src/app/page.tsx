@@ -821,14 +821,24 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent className="space-y-6">
               {(() => {
-                const totalCost = data.totals.totalCost;
-                const max100Savings = Math.max(0, 100 - totalCost);
-                const max200Savings = Math.max(0, 200 - totalCost);
-                const currentUtilization100 = Math.min((totalCost / 100) * 100, 100);
-                const currentUtilization200 = Math.min((totalCost / 200) * 100, 100);
+                // Calculate current month's cost (billing is monthly)
+                const now = new Date();
+                const currentMonth = now.getMonth();
+                const currentYear = now.getFullYear();
+                const monthlyCost = data.daily
+                  .filter(day => {
+                    const dayDate = new Date(day.date);
+                    return dayDate.getMonth() === currentMonth && dayDate.getFullYear() === currentYear;
+                  })
+                  .reduce((sum, day) => sum + (day.totalCost || 0), 0);
 
-                const actualPlan = totalCost <= 100 ? 'Max $100' : totalCost <= 200 ? 'Max $200' : 'Over Budget';
-                const planStatus = totalCost <= 100 ? 'success' : totalCost <= 200 ? 'warning' : 'danger';
+                const max100Savings = Math.max(0, 100 - monthlyCost);
+                const max200Savings = Math.max(0, 200 - monthlyCost);
+                const currentUtilization100 = Math.min((monthlyCost / 100) * 100, 100);
+                const currentUtilization200 = Math.min((monthlyCost / 200) * 100, 100);
+
+                const actualPlan = monthlyCost <= 100 ? 'Max $100' : monthlyCost <= 200 ? 'Max $200' : 'Over Budget';
+                const planStatus = monthlyCost <= 100 ? 'success' : monthlyCost <= 200 ? 'warning' : 'danger';
 
                 return (
                   <>
@@ -846,7 +856,7 @@ export default function Dashboard() {
                             {t.plan.currentStatus}: {actualPlan}
                           </h3>
                           <p className="text-xs text-muted-foreground">
-                            {t.plan.totalSpend}: {formatCurrency(totalCost)} - {planStatus === 'success' ? t.plan.withinBudget : planStatus === 'warning' ? t.plan.moderateUsage : t.plan.overBudget}
+                            {t.plan.totalSpend}: {formatCurrency(monthlyCost)} - {planStatus === 'success' ? t.plan.withinBudget : planStatus === 'warning' ? t.plan.moderateUsage : t.plan.overBudget}
                           </p>
                         </div>
                       </div>
@@ -860,7 +870,7 @@ export default function Dashboard() {
                           <Target className="w-4 h-4 text-primary" />
                           <h4 className="font-semibold text-sm">{t.plan.currentUsage}</h4>
                         </div>
-                        <p className="text-2xl font-bold text-primary">{formatCurrency(totalCost)}</p>
+                        <p className="text-2xl font-bold text-primary">{formatCurrency(monthlyCost)}</p>
                         <p className="text-xs text-muted-foreground mt-1">
                           {t.plan.thisBillingPeriod}
                         </p>
@@ -881,7 +891,7 @@ export default function Dashboard() {
                           <p className={`text-lg font-bold ${max100Savings > 0 ? 'text-primary' : 'text-muted-foreground'}`}>
                             {max100Savings > 0
                               ? `${formatCurrency(max100Savings)} ${t.plan.saving}`
-                              : `${formatCurrency(totalCost - 100)} ${t.plan.over}`
+                              : `${formatCurrency(monthlyCost - 100)} ${t.plan.over}`
                             }
                           </p>
                         </div>
@@ -902,7 +912,7 @@ export default function Dashboard() {
                           <p className={`text-lg font-bold ${max200Savings > 0 ? 'text-chart-2' : 'text-muted-foreground'}`}>
                             {max200Savings > 0
                               ? `${formatCurrency(max200Savings)} ${t.plan.saving}`
-                              : `${formatCurrency(totalCost - 200)} ${t.plan.over}`
+                              : `${formatCurrency(monthlyCost - 200)} ${t.plan.over}`
                             }
                           </p>
                         </div>
@@ -1021,9 +1031,19 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent className="space-y-4">
               {(() => {
-                const totalCost = data.totals.totalCost;
-                const avgDailyCost = totalCost / data.daily.length;
-                const projectedMonthlyCost = avgDailyCost * 30;
+                // Calculate current month's cost for accurate metrics
+                const now = new Date();
+                const currentMonth = now.getMonth();
+                const currentYear = now.getFullYear();
+                const currentMonthDays = data.daily.filter(day => {
+                  const dayDate = new Date(day.date);
+                  return dayDate.getMonth() === currentMonth && dayDate.getFullYear() === currentYear;
+                });
+                const currentMonthCost = currentMonthDays.reduce((sum, day) => sum + (day.totalCost || 0), 0);
+                const daysInMonth = currentMonthDays.length || 1;
+                const avgDailyCost = currentMonthCost / daysInMonth;
+                const daysRemaining = new Date(currentYear, currentMonth + 1, 0).getDate() - now.getDate();
+                const projectedMonthlyCost = currentMonthCost + (avgDailyCost * daysRemaining);
                 const cacheEfficiency = ((data.totals.cacheReadTokens / (data.totals.cacheReadTokens + data.totals.inputTokens)) * 100) || 0;
 
                 return (
@@ -1048,7 +1068,7 @@ export default function Dashboard() {
                       <div className="flex items-center justify-between p-3">
                         <div>
                           <p className="text-sm font-medium">{t.keyMetrics.costPerMillionTokens}</p>
-                          <p className="text-lg font-bold text-magenta">{formatCurrency((totalCost / (data.totals.totalTokens / 1000000)))}</p>
+                          <p className="text-lg font-bold text-magenta">{formatCurrency((data.totals.totalCost / (data.totals.totalTokens / 1000000)))}</p>
                         </div>
                         <Hash className="w-8 h-8 text-magenta" />
                       </div>
@@ -1111,7 +1131,7 @@ export default function Dashboard() {
                                 month: 'short',
                                 day: 'numeric'
                               });
-                              const avgCost = totalCost / data.daily.length;
+                              const avgCost = avgDailyCost;
                               const isHigh = (peakDay.totalCost || 0) > avgCost * 2;
                               const status = isHigh ? t.trends.highPeak : t.trends.moderatePeak;
                               return `${status} ${t.trends.date}: ${formattedDate}`;
@@ -1150,8 +1170,8 @@ export default function Dashboard() {
                                 month: 'short',
                                 day: 'numeric'
                               });
-                              const avgCost = totalCost / activeDays.length;
-                              const isLow = (leastDay.totalCost || 0) < avgCost * 0.5;
+                              const avgCostForComparison = avgDailyCost;
+                              const isLow = (leastDay.totalCost || 0) < avgCostForComparison * 0.5;
                               const status = isLow ? t.trends.veryLow : t.trends.low;
                               return `${status} ${t.trends.date}: ${formattedDate}`;
                             })()}
@@ -1168,7 +1188,7 @@ export default function Dashboard() {
                         {t.recommendations.title}
                       </h4>
                       <div className="space-y-3">
-                        {totalCost < 50 && (
+                        {currentMonthCost < 50 && (
                           <div className="flex items-center gap-3 p-3 rounded-lg bg-success/10 border border-success/20">
                             <CheckCircle className="w-4 h-4 text-success flex-shrink-0" />
                             <p className="text-xs text-success font-medium">
@@ -1176,7 +1196,7 @@ export default function Dashboard() {
                             </p>
                           </div>
                         )}
-                        {totalCost >= 80 && totalCost < 100 && (
+                        {currentMonthCost >= 80 && currentMonthCost < 100 && (
                           <div className="flex items-center gap-3 p-3 rounded-lg bg-yellow-50 border border-yellow-200">
                             <AlertTriangle className="w-4 h-4 text-yellow-600 flex-shrink-0" />
                             <p className="text-xs text-yellow-700 font-medium">
