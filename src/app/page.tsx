@@ -960,6 +960,7 @@ export default function Dashboard() {
 
                         const getModelDisplayName = (modelName: string) => {
                           if (modelName.includes('opus-4-1')) return t.models.claudeOpus41;
+                          if (modelName.includes('opus-4-5')) return t.models.claudeOpus45;
                           if (modelName.includes('sonnet-4-5')) return t.models.claudeSonnet45;
                           if (modelName.includes('haiku-4-5')) return t.models.claudeHaiku45;
                           if (modelName.includes('opus-4')) return t.models.claudeOpus4;
@@ -1076,8 +1077,9 @@ export default function Dashboard() {
                               const models = Array.from(allModelsUsed);
                               const primaryModel = models[0] || 'N/A';
                               const displayName = primaryModel.includes('sonnet-4') ? 'Claude Sonnet 4' :
-                                primaryModel.includes('opus-4') ? 'Claude Opus 4' :
-                                  primaryModel.includes('haiku') ? 'Claude Haiku' :
+                                primaryModel.includes('opus-4-5') ? 'Claude Opus 4.5' :
+                                  primaryModel.includes('opus-4') ? 'Claude Opus 4' :
+                                    primaryModel.includes('haiku') ? 'Claude Haiku' :
                                     primaryModel.replace(/claude-|-\d{8}/g, '').replace(/-/g, ' ');
                               return `${t.keyMetrics.primary}: ${displayName}`;
                             })()}

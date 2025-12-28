@@ -184,6 +184,7 @@ export const hi: LocaleKeys = {
         claudeSonnet4: "Claude Sonnet 4",
         claudeSonnet45: "Claude Sonnet 4.5",
         claudeOpus4: "Claude Opus 4",
+        claudeOpus45: "Claude Opus 4.5",
         claudeOpus41: "Claude Opus 4.1",
         claudeHaiku: "Claude Haiku",
         claudeHaiku45: "Claude Haiku 4.5",
