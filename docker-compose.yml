@@ -1,10 +1,10 @@
-version: '3.8'
+version: "3.8"
 
 services:
   dashboard:
     build: .
     ports:
-      - "3300:3000"
+      - "3300:11111"
     environment:
       - NODE_ENV=production
       - HOME=/home/nextjs

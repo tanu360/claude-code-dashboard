@@ -19,7 +19,7 @@ RUN cp -r public .next/standalone/public || true
 RUN cp -r .next/static .next/standalone/.next/static || true
 
 # Expose port
-EXPOSE 3000
+EXPOSE 11111
 
 # Create a non-root user
 RUN addgroup -g 1001 -S nodejs && \
@@ -28,7 +28,7 @@ RUN addgroup -g 1001 -S nodejs && \
 
 # Set environment variables
 ENV NODE_ENV=production
-ENV PORT=3000
+ENV PORT=11111
 ENV HOSTNAME="0.0.0.0"
 
 # Switch to non-root user

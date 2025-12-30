@@ -105,7 +105,7 @@ A comprehensive Next.js dashboard for monitoring Claude usage analytics, cost in
    ```
 
 4. **Open your browser**
-   Navigate to [http://localhost:3000](http://localhost:3000)
+   Navigate to [http://localhost:11111](http://localhost:11111)
 
 ### Docker Deployment
 
@@ -120,7 +120,7 @@ A comprehensive Next.js dashboard for monitoring Claude usage analytics, cost in
 2. **Using Docker directly**
    ```bash
    docker build -t claude-dashboard .
-   docker run -p 3000:3000 \
+   docker run -p 11111:11111 \
      -v ~/.claude/db:/home/nextjs/.claude/db:ro \
      claude-dashboard
    ```
