@@ -10,7 +10,7 @@ if ! command -v docker &> /dev/null; then
 fi
 
 # Check if docker compose is installed (v2 or v1)
-if command -v docker compose &> /dev/null; then
+if docker compose version &> /dev/null; then
     DOCKER_COMPOSE="docker compose"
 elif command -v docker-compose &> /dev/null; then
     DOCKER_COMPOSE="docker-compose"

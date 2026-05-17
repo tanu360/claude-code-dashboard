@@ -8,6 +8,9 @@ COPY package*.json ./
 # Install dependencies
 RUN npm install
 
+# Install ccusage at build time because the runtime user is non-root
+RUN npm install -g ccusage@latest
+
 # Copy source code
 COPY . .
 
