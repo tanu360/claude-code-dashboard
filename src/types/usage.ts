@@ -21,6 +21,8 @@ export interface DailyUsage {
 
 export interface UsageResponse {
   daily: DailyUsage[];
+  weekly?: DailyUsage[];
+  monthly?: DailyUsage[];
   totals: {
     inputTokens: number;
     outputTokens: number;
@@ -37,3 +39,4 @@ export interface ExchangeRate {
 }
 
 export type Currency = 'USD' | 'INR';
+export type TimePeriod = 'daily' | 'weekly' | 'monthly' | 'all';

@@ -48,16 +48,27 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import type { UsageResponse, Currency, DailyUsage } from '@/types/usage';
+import type { UsageResponse, Currency, DailyUsage, TimePeriod } from '@/types/usage';
 import { useTranslations, type Locale } from '@/locales';
 import { useTheme } from '@/components/theme-provider';
+
+type UsageTotals = UsageResponse['totals'];
+
+type ModelStats = {
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  totalCost: number;
+  totalTokens: number;
+};
 
 export default function Dashboard() {
   const { theme, setTheme } = useTheme();
   const [data, setData] = useState<UsageResponse | null>(null);
   const [currency, setCurrency] = useState<Currency>('USD');
   const [language, setLanguage] = useState<'en' | 'hi'>('en');
-  const [timePeriod, setTimePeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily');
+  const [timePeriod, setTimePeriod] = useState<TimePeriod>('daily');
   const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -196,12 +207,11 @@ export default function Dashboard() {
 
     dailyData.forEach(day => {
       const date = new Date(day.date);
-      // Get the Monday of the week (ISO week)
+      // ccusage groups weekly reports by the Sunday week start.
       const dayOfWeek = date.getDay();
-      const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-      const monday = new Date(date);
-      monday.setDate(date.getDate() + mondayOffset);
-      const weekKey = monday.toISOString().split('T')[0];
+      const weekStart = new Date(date);
+      weekStart.setDate(date.getDate() - dayOfWeek);
+      const weekKey = weekStart.toISOString().split('T')[0];
 
       if (!weeklyData.has(weekKey)) {
         weeklyData.set(weekKey, {
@@ -260,6 +270,143 @@ export default function Dashboard() {
     });
 
     return Array.from(monthlyData.values()).sort((a, b) => a.date.localeCompare(b.date));
+  };
+
+  const getEmptyTotals = (): UsageTotals => ({
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheCreationTokens: 0,
+    cacheReadTokens: 0,
+    totalTokens: 0,
+    totalCost: 0,
+  });
+
+  const sumUsageRows = (rows: DailyUsage[]): UsageTotals =>
+    rows.reduce((totals, row) => ({
+      inputTokens: totals.inputTokens + (row.inputTokens || 0),
+      outputTokens: totals.outputTokens + (row.outputTokens || 0),
+      cacheCreationTokens: totals.cacheCreationTokens + (row.cacheCreationTokens || 0),
+      cacheReadTokens: totals.cacheReadTokens + (row.cacheReadTokens || 0),
+      totalTokens: totals.totalTokens + (row.totalTokens || 0),
+      totalCost: totals.totalCost + (row.totalCost || 0),
+    }), getEmptyTotals());
+
+  const addDaysToDateKey = (dateKey: string, days: number) => {
+    const date = new Date(`${dateKey}T00:00:00`);
+    date.setDate(date.getDate() + days);
+    return date.toISOString().split('T')[0];
+  };
+
+  const getPeriodData = (period: TimePeriod): DailyUsage[] => {
+    if (!data) return [];
+
+    if (period === 'weekly') {
+      return data.weekly?.length ? data.weekly : aggregateDataByWeek(data.daily);
+    }
+
+    if (period === 'monthly') {
+      return data.monthly?.length ? data.monthly : aggregateDataByMonth(data.daily);
+    }
+
+    return data.daily;
+  };
+
+  const getDailyRowsForPeriod = (
+    period: TimePeriod,
+    currentPeriodUsage: DailyUsage | null,
+    dailyRows: DailyUsage[]
+  ) => {
+    if (period === 'all') return dailyRows;
+    if (!currentPeriodUsage) return [];
+
+    if (period === 'daily') {
+      return dailyRows.filter(day => day.date === currentPeriodUsage.date);
+    }
+
+    if (period === 'weekly') {
+      const weekEnd = addDaysToDateKey(currentPeriodUsage.date, 6);
+      return dailyRows.filter(day => day.date >= currentPeriodUsage.date && day.date <= weekEnd);
+    }
+
+    const monthKey = currentPeriodUsage.date.slice(0, 7);
+    return dailyRows.filter(day => day.date.startsWith(monthKey));
+  };
+
+  const isRenderableModelName = (modelName: string) => {
+    const normalizedName = modelName.trim().toLowerCase();
+    return normalizedName !== '' &&
+      normalizedName !== 'unknown' &&
+      normalizedName !== 'unknown model' &&
+      normalizedName !== 'n/a';
+  };
+
+  const formatModelDisplayName = (modelName: string) => {
+    const normalizedName = modelName.toLowerCase();
+    const vendorPrefix = normalizedName.startsWith('kiro-')
+      ? 'Kiro '
+      : normalizedName.startsWith('openlimit/')
+        ? 'OpenLimit '
+        : '';
+    const modeSuffix = normalizedName.includes('thinking')
+      ? ` ${t.models.thinking}`
+      : normalizedName.includes('agentic')
+        ? ` ${t.models.agentic}`
+        : '';
+
+    if (normalizedName.includes('opus-4-7')) return `${vendorPrefix}${t.models.claudeOpus47}${modeSuffix}`;
+    if (normalizedName.includes('opus-4-6')) return `${vendorPrefix}${t.models.claudeOpus46}${modeSuffix}`;
+    if (normalizedName.includes('opus-4-5')) return `${vendorPrefix}${t.models.claudeOpus45}${modeSuffix}`;
+    if (normalizedName.includes('opus-4-1')) return `${vendorPrefix}${t.models.claudeOpus41}${modeSuffix}`;
+    if (normalizedName.includes('sonnet-4-6') || normalizedName.includes('sonnet-4.6')) return `${vendorPrefix}${t.models.claudeSonnet46}${modeSuffix}`;
+    if (normalizedName.includes('sonnet-4-5')) return `${vendorPrefix}${t.models.claudeSonnet45}${modeSuffix}`;
+    if (normalizedName.includes('sonnet-4')) return `${vendorPrefix}${t.models.claudeSonnet4}${modeSuffix}`;
+    if (normalizedName.includes('haiku-4-5')) return `${vendorPrefix}${t.models.claudeHaiku45}${modeSuffix}`;
+    if (normalizedName.includes('haiku')) return `${vendorPrefix}${t.models.claudeHaiku}${modeSuffix}`;
+
+    return modelName
+      .replace(/^openlimit\//i, 'OpenLimit ')
+      .replace(/^models\//i, '')
+      .replace(/claude-/gi, 'Claude ')
+      .replace(/-\d{8}/g, '')
+      .replace(/-/g, ' ')
+      .replace(/\b\w/g, char => char.toUpperCase());
+  };
+
+  const getTopModelStats = (rows: DailyUsage[]) => {
+    const modelStats: Record<string, ModelStats> = {};
+
+    rows.forEach(day => {
+      day.modelBreakdowns?.forEach(breakdown => {
+        const modelName = breakdown.modelName || '';
+        if (!isRenderableModelName(modelName)) return;
+
+        if (!modelStats[modelName]) {
+          modelStats[modelName] = {
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheCreationTokens: 0,
+            cacheReadTokens: 0,
+            totalCost: 0,
+            totalTokens: 0,
+          };
+        }
+
+        modelStats[modelName].inputTokens += breakdown.inputTokens || 0;
+        modelStats[modelName].outputTokens += breakdown.outputTokens || 0;
+        modelStats[modelName].cacheCreationTokens += breakdown.cacheCreationTokens || 0;
+        modelStats[modelName].cacheReadTokens += breakdown.cacheReadTokens || 0;
+        modelStats[modelName].totalCost += breakdown.cost || 0;
+        modelStats[modelName].totalTokens +=
+          (breakdown.inputTokens || 0) +
+          (breakdown.outputTokens || 0) +
+          (breakdown.cacheCreationTokens || 0) +
+          (breakdown.cacheReadTokens || 0);
+      });
+    });
+
+    return Object.entries(modelStats)
+      .sort(([, a], [, b]) => b.totalCost - a.totalCost || b.totalTokens - a.totalTokens)
+      .slice(0, 3);
   };
 
   const handleSort = (field: string) => {
@@ -329,14 +476,7 @@ export default function Dashboard() {
   const getChartData = () => {
     if (!data) return [];
 
-    let processedData = data.daily;
-
-    // Aggregate data based on time period
-    if (timePeriod === 'weekly') {
-      processedData = aggregateDataByWeek(data.daily);
-    } else if (timePeriod === 'monthly') {
-      processedData = aggregateDataByMonth(data.daily);
-    }
+    const processedData = getPeriodData(timePeriod);
 
     return processedData
       .slice()
@@ -344,7 +484,7 @@ export default function Dashboard() {
         const date = new Date(item.date);
         let dateLabel = '';
 
-        if (timePeriod === 'daily') {
+        if (timePeriod === 'daily' || timePeriod === 'all') {
           dateLabel = date.toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', {
             month: 'short',
             day: 'numeric'
@@ -420,6 +560,38 @@ export default function Dashboard() {
     );
   }
 
+  const selectedPeriodData = getPeriodData(timePeriod);
+  const currentPeriodUsage = timePeriod === 'all'
+    ? null
+    : selectedPeriodData[selectedPeriodData.length - 1] || null;
+  const previousPeriodUsage = timePeriod === 'all'
+    ? null
+    : selectedPeriodData[selectedPeriodData.length - 2] || null;
+  const selectedTotals = timePeriod === 'all'
+    ? data.totals
+    : currentPeriodUsage
+      ? sumUsageRows([currentPeriodUsage])
+      : getEmptyTotals();
+  const selectedDailyRows = getDailyRowsForPeriod(timePeriod, currentPeriodUsage, data.daily);
+  const selectedActiveDays = selectedDailyRows.filter(day => (day.totalCost || 0) > 0).length;
+  const selectedTotalDays = timePeriod === 'all'
+    ? data.daily.length
+    : Math.max(selectedDailyRows.length, currentPeriodUsage ? 1 : 0);
+  const selectedAverageCost = selectedTotalDays > 0 ? selectedTotals.totalCost / selectedTotalDays : 0;
+  const selectedModelRows = timePeriod === 'all'
+    ? data.daily
+    : currentPeriodUsage
+      ? [currentPeriodUsage]
+      : [];
+  const topModelStats = getTopModelStats(selectedModelRows);
+  const selectedPeriodLabel = timePeriod === 'all' ? t.timePeriod.all : t.timePeriod[timePeriod];
+  const growthLabel = timePeriod === 'daily'
+    ? t.stats.fromYesterday
+    : timePeriod === 'weekly'
+      ? t.stats.fromLastWeek
+      : timePeriod === 'monthly'
+        ? t.stats.fromLastMonth
+        : t.stats.allTime;
   const chartData = getChartData();
 
   return (
@@ -464,6 +636,14 @@ export default function Dashboard() {
                   >
                     <Calendar className="w-4 h-4 mr-1" />
                     {t.timePeriod.monthly}
+                  </Button>
+                  <Button
+                    variant={timePeriod === 'all' ? 'default' : 'secondary'}
+                    size="sm"
+                    onClick={() => setTimePeriod('all')}
+                  >
+                    <Calendar className="w-4 h-4 mr-1" />
+                    {t.timePeriod.all}
                   </Button>
                 </div>
               </div>
@@ -597,77 +777,40 @@ export default function Dashboard() {
                   <p className="text-sm font-medium text-muted-foreground">
                     {t.stats.totalCost}
                   </p>
-                  <p className="text-3xl font-bold tracking-tight">{formatCurrency(data.totals.totalCost)}</p>
+                  <p className="text-3xl font-bold tracking-tight">{formatCurrency(selectedTotals.totalCost)}</p>
                   <div className="flex items-center gap-2 text-xs">
                     {(() => {
-                      // Calculate growth based on selected time period
-                      const dailyData = data.daily || [];
-
-                      let processedData, recentTotal, previousTotal, periodLabel;
-
-                      if (timePeriod === 'weekly') {
-                        processedData = aggregateDataByWeek(dailyData);
-                        if (processedData.length < 2) {
-                          return (
-                            <>
-                              <TrendingUp className="w-3 h-3 text-muted-foreground" />
-                              <span className="text-muted-foreground">
-                                {t.stats.insufficientData}
-                              </span>
-                            </>
-                          );
-                        }
-                        const recent = processedData[processedData.length - 1];
-                        const previous = processedData[processedData.length - 2];
-                        recentTotal = recent.totalCost;
-                        previousTotal = previous.totalCost;
-                        periodLabel = t.stats.fromLastWeek;
-                      } else if (timePeriod === 'monthly') {
-                        processedData = aggregateDataByMonth(dailyData);
-                        if (processedData.length < 2) {
-                          return (
-                            <>
-                              <TrendingUp className="w-3 h-3 text-muted-foreground" />
-                              <span className="text-muted-foreground">
-                                {t.stats.insufficientData}
-                              </span>
-                            </>
-                          );
-                        }
-                        const recent = processedData[processedData.length - 1];
-                        const previous = processedData[processedData.length - 2];
-                        recentTotal = recent.totalCost;
-                        previousTotal = previous.totalCost;
-                        periodLabel = t.stats.fromLastMonth;
-                      } else {
-                        // Daily view - compare yesterday vs day before yesterday
-                        if (dailyData.length < 2) {
-                          return (
-                            <>
-                              <TrendingUp className="w-3 h-3 text-muted-foreground" />
-                              <span className="text-muted-foreground">
-                                {t.stats.insufficientData}
-                              </span>
-                            </>
-                          );
-                        }
-                        const yesterday = dailyData[dailyData.length - 1];
-                        const dayBefore = dailyData[dailyData.length - 2];
-                        recentTotal = yesterday.totalCost || 0;
-                        previousTotal = dayBefore.totalCost || 0;
-                        periodLabel = t.stats.fromYesterday;
-                      }
-
-                      if (previousTotal === 0) {
+                      if (timePeriod === 'all') {
                         return (
                           <>
-                            <TrendingUp className="w-3 h-3 text-success" />
-                            <span className="text-success">New usage</span>
+                            <Info className="w-3 h-3 text-muted-foreground" />
+                            <span className="text-muted-foreground">{t.stats.allTime}</span>
                           </>
                         );
                       }
 
-                      const growth = ((recentTotal - previousTotal) / previousTotal) * 100;
+                      if (!previousPeriodUsage) {
+                        return (
+                          <>
+                            <TrendingUp className="w-3 h-3 text-muted-foreground" />
+                            <span className="text-muted-foreground">
+                              {t.stats.insufficientData}
+                            </span>
+                          </>
+                        );
+                      }
+
+                      const previousTotal = previousPeriodUsage.totalCost || 0;
+                      if (previousTotal === 0) {
+                        return (
+                          <>
+                            <TrendingUp className="w-3 h-3 text-success" />
+                            <span className="text-success">{t.stats.newUsage}</span>
+                          </>
+                        );
+                      }
+
+                      const growth = ((selectedTotals.totalCost - previousTotal) / previousTotal) * 100;
                       const isPositive = growth > 0;
 
                       return (
@@ -681,14 +824,14 @@ export default function Dashboard() {
                             {isPositive ? '+' : ''}{growth.toFixed(1)}%
                           </span>
                           <span className="text-muted-foreground">
-                            {periodLabel}
+                            {growthLabel}
                           </span>
                         </>
                       );
                     })()}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {t.stats.dailyAvg}: <span className="text-sm font-bold text-success">{formatCurrency(data.totals.totalCost / data.daily.length)}</span>
+                    {t.stats.periodAvg}: <span className="text-sm font-bold text-success">{formatCurrency(selectedAverageCost)}</span>
                   </div>
                 </div>
                 <div>
@@ -710,7 +853,7 @@ export default function Dashboard() {
                   <p className="text-sm font-medium text-muted-foreground">
                     {t.stats.totalTokens}
                   </p>
-                  <p className="text-3xl font-bold tracking-tight">{formatTokenCount(data.totals.totalTokens)}</p>
+                  <p className="text-3xl font-bold tracking-tight">{formatTokenCount(selectedTotals.totalTokens)}</p>
                   <div className="flex items-center gap-2 text-xs">
                     <Cpu className="w-3 h-3" />
                     <span className="text-muted-foreground">
@@ -718,7 +861,7 @@ export default function Dashboard() {
                     </span>
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {t.stats.input}: <span className="text-sm font-bold">{formatTokenCount(data.totals.inputTokens || 0)}</span> • {t.stats.output}: <span className="text-sm font-bold">{formatTokenCount(data.totals.outputTokens || 0)}</span>
+                    {t.stats.input}: <span className="text-sm font-bold">{formatTokenCount(selectedTotals.inputTokens || 0)}</span> • {t.stats.output}: <span className="text-sm font-bold">{formatTokenCount(selectedTotals.outputTokens || 0)}</span>
                   </div>
                 </div>
                 <div>
@@ -738,8 +881,8 @@ export default function Dashboard() {
                   </p>
                   <p className="text-3xl font-bold tracking-tight">
                     {(() => {
-                      const cacheReads = data.totals.cacheReadTokens || 0;
-                      const inputTokens = data.totals.inputTokens || 0;
+                      const cacheReads = selectedTotals.cacheReadTokens || 0;
+                      const inputTokens = selectedTotals.inputTokens || 0;
                       const totalInput = inputTokens + cacheReads;
                       const cacheEfficiency = totalInput > 0 ? (cacheReads / totalInput) * 100 : 0;
                       return `${cacheEfficiency.toFixed(1)}%`;
@@ -749,8 +892,8 @@ export default function Dashboard() {
                     <Zap className="w-3 h-3 text-primary" />
                     <span className="text-primary">
                       {(() => {
-                        const cacheReads = data.totals.cacheReadTokens || 0;
-                        const inputTokens = data.totals.inputTokens || 0;
+                        const cacheReads = selectedTotals.cacheReadTokens || 0;
+                        const inputTokens = selectedTotals.inputTokens || 0;
                         const totalInput = inputTokens + cacheReads;
                         const cacheEfficiency = totalInput > 0 ? (cacheReads / totalInput) * 100 : 0;
                         return cacheEfficiency > 80 ? t.stats.excellent : cacheEfficiency > 60 ? t.stats.good : cacheEfficiency > 40 ? t.stats.average : t.stats.low;
@@ -758,7 +901,7 @@ export default function Dashboard() {
                     </span>
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {t.stats.read}: <span className="text-sm font-bold">{formatTokenCount(data.totals.cacheReadTokens || 0)}</span> • {t.stats.write}: <span className="text-sm font-bold">{formatTokenCount(data.totals.cacheCreationTokens || 0)}</span>
+                    {t.stats.read}: <span className="text-sm font-bold">{formatTokenCount(selectedTotals.cacheReadTokens || 0)}</span> • {t.stats.write}: <span className="text-sm font-bold">{formatTokenCount(selectedTotals.cacheCreationTokens || 0)}</span>
                   </div>
                 </div>
                 <div>
@@ -777,25 +920,16 @@ export default function Dashboard() {
                     {t.stats.activeDays}
                   </p>
                   <p className="text-3xl font-bold tracking-tight">
-                    {(() => {
-                      const activeDays = data.daily.filter(day => (day.totalCost || 0) > 0).length;
-                      return activeDays;
-                    })()}
+                    {selectedActiveDays}
                   </p>
                   <div className="flex items-center gap-2 text-xs">
                     <Timer className="w-3 h-3" />
                     <span className="text-muted-foreground">
-                      {t.stats.activeDays}
+                      {selectedPeriodLabel}
                     </span>
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {(() => {
-                      const activeDays = data.daily.filter(day => (day.totalCost || 0) > 0).length;
-                      const totalDays = data.daily.length;
-                      return (
-                        <><span className="text-sm font-bold">{activeDays}</span> {t.stats.activeDaysCount} <span className="text-sm font-bold">{totalDays}</span> {t.stats.activeDaysText}</>
-                      );
-                    })()}
+                    <span className="text-sm font-bold">{selectedActiveDays}</span> {t.stats.activeDaysCount} <span className="text-sm font-bold">{selectedTotalDays}</span> {t.stats.activeDaysText}
                   </div>
                 </div>
                 <div>
@@ -927,63 +1061,19 @@ export default function Dashboard() {
                       </div>
 
                       {(() => {
-                        // Get all unique models used across all days
-                        const allModelsUsed = new Set<string>();
-                        data.daily.forEach(day => {
-                          if (day.modelsUsed) {
-                            day.modelsUsed.forEach(model => allModelsUsed.add(model));
-                          }
-                        });
+                        if (topModelStats.length === 0) {
+                          return (
+                            <p className="text-sm text-muted-foreground">
+                              {t.activity.noDataAvailable}
+                            </p>
+                          );
+                        }
 
-                        const modelStats: Record<string, {
-                          inputTokens: number;
-                          outputTokens: number;
-                          cacheCreationTokens: number;
-                          cacheReadTokens: number;
-                          totalCost: number;
-                        }> = {};
-                        Array.from(allModelsUsed).forEach((modelName: string) => {
-                          modelStats[modelName] = {
-                            inputTokens: 0,
-                            outputTokens: 0,
-                            cacheCreationTokens: 0,
-                            cacheReadTokens: 0,
-                            totalCost: 0
-                          };
-                        });
-
-                        // Aggregate stats by model
-                        data.daily.forEach(day => {
-                          if (day.modelBreakdowns) {
-                            day.modelBreakdowns.forEach(breakdown => {
-                              const model = breakdown.modelName;
-                              if (modelStats[model]) {
-                                modelStats[model].inputTokens += breakdown.inputTokens || 0;
-                                modelStats[model].outputTokens += breakdown.outputTokens || 0;
-                                modelStats[model].cacheCreationTokens += breakdown.cacheCreationTokens || 0;
-                                modelStats[model].cacheReadTokens += breakdown.cacheReadTokens || 0;
-                                modelStats[model].totalCost += breakdown.cost || 0;
-                              }
-                            });
-                          }
-                        });
-
-                        const getModelDisplayName = (modelName: string) => {
-                          if (modelName.includes('opus-4-1')) return t.models.claudeOpus41;
-                          if (modelName.includes('opus-4-5')) return t.models.claudeOpus45;
-                          if (modelName.includes('sonnet-4-5')) return t.models.claudeSonnet45;
-                          if (modelName.includes('haiku-4-5')) return t.models.claudeHaiku45;
-                          if (modelName.includes('opus-4')) return t.models.claudeOpus4;
-                          if (modelName.includes('sonnet-4')) return t.models.claudeSonnet4;
-                          if (modelName.includes('haiku')) return t.models.claudeHaiku;
-                          return modelName.replace(/claude-|-\d{8}/g, '').replace(/-/g, ' ').toUpperCase();
-                        };
-
-                        return Object.entries(modelStats).map(([modelName, stats], index) => (
+                        return topModelStats.map(([modelName, stats], index) => (
                           <div key={modelName} className="mb-6">
                             <div className="flex items-center gap-2 mb-3">
                               <div className={`w-3 h-3 bg-chart-${(index % 5) + 1} rounded-full`}></div>
-                              <h5 className="font-medium text-sm">{getModelDisplayName(modelName)}</h5>
+                              <h5 className="font-medium text-sm">{formatModelDisplayName(modelName)}</h5>
                               <span className="text-base font-bold text-chart-2">{formatCurrency(stats.totalCost)}</span>
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -1011,7 +1101,7 @@ export default function Dashboard() {
                       <div className="mt-4 pt-4 border-t">
                         <div className="flex justify-between items-center">
                           <span className="font-medium">{t.plan.totalModelCost}:</span>
-                          <span className="font-bold text-lg text-chart-2">{formatCurrency(data.totals.totalCost)}</span>
+                          <span className="font-bold text-lg text-chart-2">{formatCurrency(selectedTotals.totalCost)}</span>
                         </div>
                       </div>
                     </div>
@@ -1076,32 +1166,12 @@ export default function Dashboard() {
                       <div className="flex items-center justify-between p-3">
                         <div>
                           <p className="text-sm font-medium">
-                            {(() => {
-                              const allModelsUsed = new Set<string>();
-                              data.daily.forEach(day => {
-                                if (day.modelsUsed) {
-                                  day.modelsUsed.forEach(model => allModelsUsed.add(model));
-                                }
-                              });
-                              return `${allModelsUsed.size} ${allModelsUsed.size > 1 ? t.keyMetrics.modelsUsed : t.keyMetrics.modelUsed}`;
-                            })()}
+                            {topModelStats.length} {topModelStats.length !== 1 ? t.keyMetrics.modelsUsed : t.keyMetrics.modelUsed}
                           </p>
                           <p className="text-xs text-muted-foreground">
                             {(() => {
-                              const allModelsUsed = new Set<string>();
-                              data.daily.forEach(day => {
-                                if (day.modelsUsed) {
-                                  day.modelsUsed.forEach(model => allModelsUsed.add(model));
-                                }
-                              });
-                              const models = Array.from(allModelsUsed);
-                              const primaryModel = models[0] || 'N/A';
-                              const displayName = primaryModel.includes('sonnet-4') ? 'Claude Sonnet 4' :
-                                primaryModel.includes('opus-4-5') ? 'Claude Opus 4.5' :
-                                  primaryModel.includes('opus-4') ? 'Claude Opus 4' :
-                                    primaryModel.includes('haiku') ? 'Claude Haiku' :
-                                    primaryModel.replace(/claude-|-\d{8}/g, '').replace(/-/g, ' ');
-                              return `${t.keyMetrics.primary}: ${displayName}`;
+                              const primaryModel = topModelStats[0]?.[0] || 'N/A';
+                              return `${t.keyMetrics.primary}: ${formatModelDisplayName(primaryModel)}`;
                             })()}
                           </p>
                         </div>
@@ -1239,10 +1309,10 @@ export default function Dashboard() {
                     <Card>
                       <CardHeader>
                         <CardTitle>
-                          {timePeriod === 'daily' ? t.charts.dailyCostTrend : timePeriod === 'weekly' ? t.charts.weeklyCostTrend : t.charts.monthlyCostTrend} ({currency})
+                          {timePeriod === 'daily' ? t.charts.dailyCostTrend : timePeriod === 'weekly' ? t.charts.weeklyCostTrend : timePeriod === 'monthly' ? t.charts.monthlyCostTrend : t.charts.allCostTrend} ({currency})
                         </CardTitle>
                         <CardDescription>
-                          {timePeriod === 'daily' ? t.charts.dailyCostAnalysis : timePeriod === 'weekly' ? t.charts.weeklyCostAnalysis : t.charts.monthlyCostAnalysis}
+                          {timePeriod === 'daily' ? t.charts.dailyCostAnalysis : timePeriod === 'weekly' ? t.charts.weeklyCostAnalysis : timePeriod === 'monthly' ? t.charts.monthlyCostAnalysis : t.charts.allCostAnalysis}
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
@@ -1310,10 +1380,10 @@ export default function Dashboard() {
                     <Card>
                       <CardHeader>
                         <CardTitle>
-                          {timePeriod === 'daily' ? t.charts.dailyTokenUsage : timePeriod === 'weekly' ? t.charts.weeklyTokenUsage : t.charts.monthlyTokenUsage}
+                          {timePeriod === 'daily' ? t.charts.dailyTokenUsage : timePeriod === 'weekly' ? t.charts.weeklyTokenUsage : timePeriod === 'monthly' ? t.charts.monthlyTokenUsage : t.charts.allTokenUsage}
                         </CardTitle>
                         <CardDescription>
-                          {timePeriod === 'daily' ? t.charts.dailyTokenConsumption : timePeriod === 'weekly' ? t.charts.weeklyTokenConsumption : t.charts.monthlyTokenConsumption}
+                          {timePeriod === 'daily' ? t.charts.dailyTokenConsumption : timePeriod === 'weekly' ? t.charts.weeklyTokenConsumption : timePeriod === 'monthly' ? t.charts.monthlyTokenConsumption : t.charts.allTokenConsumption}
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
@@ -1519,11 +1589,11 @@ export default function Dashboard() {
                     </CardHeader>
                     <CardContent className="space-y-6">
                       {(() => {
-                        // Calculate real metrics from data
-                        const totalTokens = data.totals.totalTokens || 0;
-                        const totalCost = data.totals.totalCost || 0;
-                        const cacheReads = data.totals.cacheReadTokens || 0;
-                        const totalInput = (data.totals.inputTokens || 0) + cacheReads;
+                        // Calculate real metrics from the selected period
+                        const totalTokens = selectedTotals.totalTokens || 0;
+                        const totalCost = selectedTotals.totalCost || 0;
+                        const cacheReads = selectedTotals.cacheReadTokens || 0;
+                        const totalInput = (selectedTotals.inputTokens || 0) + cacheReads;
 
                         // Cost efficiency (lower cost per token is better)
                         const costPerToken = totalTokens > 0 ? totalCost / (totalTokens / 1000000) : 0;
@@ -1533,43 +1603,27 @@ export default function Dashboard() {
                         const cacheHitRate = totalInput > 0 ? (cacheReads / totalInput) * 100 : 0;
 
                         // Token utilization based on active vs inactive days
-                        const activeDays = data.daily.filter(day => (day.totalCost || 0) > 0).length;
-                        const totalDays = data.daily.length;
+                        const activeDays = selectedActiveDays;
+                        const totalDays = selectedTotalDays;
                         const tokenUtilization = totalDays > 0 ? (activeDays / totalDays) * 100 : 0;
 
                         // Calculate dynamic growth for projections based on time period
-                        let currentPeriodCost = 0;
-                        let previousPeriodCost = 0;
-                        let growthLabel = '';
-                        let comparisonLabel = '';
-
-                        if (timePeriod === 'daily') {
-                          currentPeriodCost = data.daily[data.daily.length - 1]?.totalCost || 0;
-                          previousPeriodCost = data.daily[data.daily.length - 2]?.totalCost || 0;
-                          growthLabel = t.trends.daily;
-                          comparisonLabel = t.trends.comparedToYesterday;
-                        } else if (timePeriod === 'weekly') {
-                          const processedData = aggregateDataByWeek(data.daily);
-                          if (processedData.length >= 2) {
-                            const recent = processedData[processedData.length - 1];
-                            const previous = processedData[processedData.length - 2];
-                            currentPeriodCost = recent.totalCost;
-                            previousPeriodCost = previous.totalCost;
-                          }
-                          growthLabel = t.trends.weekly;
-                          comparisonLabel = t.trends.comparedToLastWeek;
-                        } else if (timePeriod === 'monthly') {
-                          const processedData = aggregateDataByMonth(data.daily);
-                          if (processedData.length >= 2) {
-                            const recent = processedData[processedData.length - 1];
-                            const previous = processedData[processedData.length - 2];
-                            currentPeriodCost = recent.totalCost;
-                            previousPeriodCost = previous.totalCost;
-                          }
-                          growthLabel = t.trends.monthly;
-                          comparisonLabel = t.trends.comparedToLastMonth;
-                        }
-
+                        const currentPeriodCost = selectedTotals.totalCost || 0;
+                        const previousPeriodCost = previousPeriodUsage?.totalCost || 0;
+                        const growthLabel = timePeriod === 'daily'
+                          ? t.trends.daily
+                          : timePeriod === 'weekly'
+                            ? t.trends.weekly
+                            : timePeriod === 'monthly'
+                              ? t.trends.monthly
+                              : t.trends.all;
+                        const comparisonLabel = timePeriod === 'daily'
+                          ? t.trends.comparedToYesterday
+                          : timePeriod === 'weekly'
+                            ? t.trends.comparedToLastWeek
+                            : timePeriod === 'monthly'
+                              ? t.trends.comparedToLastMonth
+                              : t.stats.allTime;
                         const growthRate = previousPeriodCost > 0 ? ((currentPeriodCost - previousPeriodCost) / previousPeriodCost) * 100 : 0;
 
                         return (
@@ -1691,10 +1745,10 @@ export default function Dashboard() {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="space-y-2">
                 <CardTitle>
-                  {timePeriod === 'daily' ? t.activity.dailyActivityDetails : timePeriod === 'weekly' ? t.activity.weeklyActivityDetails : t.activity.monthlyActivityDetails}
+                  {timePeriod === 'daily' ? t.activity.dailyActivityDetails : timePeriod === 'weekly' ? t.activity.weeklyActivityDetails : timePeriod === 'monthly' ? t.activity.monthlyActivityDetails : t.activity.allActivityDetails}
                 </CardTitle>
                 <CardDescription>
-                  {timePeriod === 'daily' ? t.activity.dailyUsageData : timePeriod === 'weekly' ? t.activity.weeklyUsageData : t.activity.monthlyUsageData}
+                  {timePeriod === 'daily' ? t.activity.dailyUsageData : timePeriod === 'weekly' ? t.activity.weeklyUsageData : timePeriod === 'monthly' ? t.activity.monthlyUsageData : t.activity.allUsageData}
                 </CardDescription>
               </div>
 
@@ -1859,16 +1913,7 @@ export default function Dashboard() {
                 </thead>
                 <tbody>
                   {(() => {
-                    let dataToShow = [];
-                    if (timePeriod === 'daily' && data.daily) {
-                      dataToShow = data.daily; // Get all data first
-                    } else if (timePeriod === 'weekly' && data.daily) {
-                      const weeklyData = aggregateDataByWeek(data.daily);
-                      dataToShow = weeklyData;
-                    } else if (timePeriod === 'monthly' && data.daily) {
-                      const monthlyData = aggregateDataByMonth(data.daily);
-                      dataToShow = monthlyData;
-                    }
+                    const dataToShow = getPeriodData(timePeriod);
 
                     // Apply sorting
                     const sortedData = getSortedData(dataToShow);
@@ -1890,7 +1935,7 @@ export default function Dashboard() {
                           <tr key={item.date || index} className="border-b hover:bg-muted/50 transition-colors">
                             <td className="py-3 px-2 text-xs">
                               <div className="flex items-center gap-1">
-                                {timePeriod === 'daily'
+                                {timePeriod === 'daily' || timePeriod === 'all'
                                   ? new Date(item.date).toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US')
                                   : timePeriod === 'weekly'
                                     ? (() => {
@@ -1951,16 +1996,7 @@ export default function Dashboard() {
 
             {/* Pagination Controls */}
             {(() => {
-              let dataToShow = [];
-              if (timePeriod === 'daily' && data.daily) {
-                dataToShow = data.daily;
-              } else if (timePeriod === 'weekly' && data.daily) {
-                const weeklyData = aggregateDataByWeek(data.daily);
-                dataToShow = weeklyData;
-              } else if (timePeriod === 'monthly' && data.daily) {
-                const monthlyData = aggregateDataByMonth(data.daily);
-                dataToShow = monthlyData;
-              }
+              const dataToShow = getPeriodData(timePeriod);
 
               const sortedData = getSortedData(dataToShow);
               const filteredData = sortedData.filter(item => {
