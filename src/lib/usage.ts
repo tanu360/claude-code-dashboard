@@ -34,6 +34,24 @@ export function sumRows(rows: DailyUsage[]): UsageResponse['totals'] {
   }, emptyTotals());
 }
 
+export function allTimeCostComparison(rows: DailyUsage[], asOf: string) {
+  const history = rows.filter(row => row.date <= asOf);
+  if (!history.length) return null;
+  const firstDate = history.reduce((first, row) => row.date < first ? row.date : first, history[0].date);
+  const days = Math.round((Date.parse(asOf) - Date.parse(firstDate)) / 86400000) + 1;
+  if (days < 2) return null;
+  const earlierDays = Math.floor(days / 2);
+  const midpoint = addDays(firstDate, earlierDays);
+  let earlierCost = 0;
+  let recentCost = 0;
+  for (const row of history) {
+    if (row.date < midpoint) earlierCost += row.totalCost;
+    else recentCost += row.totalCost;
+  }
+  // Calendar-day averages keep gaps and unequal half lengths comparable.
+  return { previous: earlierCost / earlierDays, current: recentCost / (days - earlierDays) };
+}
+
 export function aggregateRows(rows: DailyUsage[], period: 'daily' | 'weekly' | 'monthly'): DailyUsage[] {
   const groups = new Map<string, DailyUsage[]>();
   for (const row of rows) {

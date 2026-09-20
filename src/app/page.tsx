@@ -51,7 +51,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { UsageResponse, Currency, DailyUsage, TimePeriod } from '@/types/usage';
 import { useTranslations, type Locale } from '@/locales';
 import { useTheme } from '@/components/theme-provider';
-import { addDays, aggregateRows, emptyTotals, periodKey, sumRows } from '@/lib/usage';
+import { addDays, aggregateRows, allTimeCostComparison, emptyTotals, periodKey, sumRows } from '@/lib/usage';
 
 type ModelStats = {
   inputTokens: number;
@@ -941,7 +941,7 @@ export default function Dashboard() {
                           );
                         }
 
-                        return topModelStats.map(([modelName, stats], index) => (
+                        return topModelStats.slice(0, 3).map(([modelName, stats], index) => (
                           <div key={modelName} className="mb-6">
                             <div className="flex items-center gap-2 mb-3">
                               <div className={`w-3 h-3 bg-chart-${(index % 5) + 1} rounded-full`}></div>
@@ -1479,8 +1479,11 @@ export default function Dashboard() {
                         const tokenUtilization = totalDays > 0 ? (activeDays / totalDays) * 100 : 0;
 
                         // Calculate dynamic growth for projections based on time period
-                        const currentPeriodCost = selectedTotals.totalCost || 0;
-                        const previousPeriodCost = previousPeriodUsage?.totalCost || 0;
+                        const comparison = timePeriod === 'all'
+                          ? allTimeCostComparison(data.daily, today)
+                          : previousPeriodUsage ? { current: selectedTotals.totalCost, previous: previousPeriodUsage.totalCost } : null;
+                        const currentPeriodCost = comparison?.current ?? 0;
+                        const previousPeriodCost = comparison?.previous ?? 0;
                         const growthLabel = timePeriod === 'daily'
                           ? t.trends.daily
                           : timePeriod === 'weekly'
@@ -1494,7 +1497,7 @@ export default function Dashboard() {
                             ? t.trends.comparedToLastWeek
                             : timePeriod === 'monthly'
                               ? t.trends.comparedToLastMonth
-                              : t.stats.allTime;
+                              : t.trends.comparedHistoryHalves;
                         const growthRate = previousPeriodCost > 0 ? ((currentPeriodCost - previousPeriodCost) / previousPeriodCost) * 100 : 0;
 
                         return (
@@ -1562,7 +1565,9 @@ export default function Dashboard() {
                                     {growthLabel}
                                   </p>
                                   <p className={`text-lg font-bold ${growthRate >= 0 ? 'text-success' : 'text-destructive'}`}>
-                                    {previousPeriodCost > 0 ? `${growthRate >= 0 ? '+' : ''}${growthRate.toFixed(1)}%` : t.stats.insufficientData}
+                                    {!comparison ? t.stats.insufficientData
+                                      : previousPeriodCost === 0 && currentPeriodCost > 0 ? t.stats.newUsage
+                                        : `${growthRate >= 0 ? '+' : ''}${growthRate.toFixed(1)}%`}
                                   </p>
                                   <p className="text-xs text-muted-foreground">
                                     {comparisonLabel}

@@ -137,6 +137,7 @@ export const en = {
         weekly: 'Weekly Trend',
         monthly: 'Monthly Trend',
         all: 'All-time Trend',
+        comparedHistoryHalves: 'Average daily cost: recent half vs earlier half of history',
         comparedToYesterday: 'Compared to yesterday',
         comparedToLastWeek: 'Compared to last week',
         comparedToLastMonth: 'Compared to last month',

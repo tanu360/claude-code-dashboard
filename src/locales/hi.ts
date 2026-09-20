@@ -139,6 +139,7 @@ export const hi: LocaleKeys = {
         weekly: 'साप्ताहिक प्रवृत्ति',
         monthly: 'मासिक प्रवृत्ति',
         all: 'सभी समय प्रवृत्ति',
+        comparedHistoryHalves: 'औसत दैनिक व्यय: इतिहास के हाल के आधे भाग की पहले आधे से तुलना',
         comparedToYesterday: 'बीते दिन से तुलना',
         comparedToLastWeek: 'गत सप्ताह से तुलना',
         comparedToLastMonth: 'गत माह से तुलना',

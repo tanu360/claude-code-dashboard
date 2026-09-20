@@ -6,10 +6,31 @@ const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const output = mkdtempSync(join(tmpdir(), 'dashboard-tests-'));
 execFileSync(process.execPath, ['node_modules/typescript/bin/tsc', 'src/lib/usage.ts', '--outDir', output, '--module', 'commonjs', '--target', 'ES2020', '--skipLibCheck']);
-const { normalizeReport, parseReport, periodKey, addDays } = require(join(output, 'lib/usage.js'));
+const { normalizeReport, parseReport, periodKey, addDays, allTimeCostComparison } = require(join(output, 'lib/usage.js'));
 after(() => rmSync(output, { recursive: true, force: true }));
 const model = { modelName: 'claude-opus-5', inputTokens: 10, outputTokens: 20, cacheCreationTokens: 30, cacheReadTokens: 40, cost: 0.25 };
 const row = date => ({ date, ...model, totalCost: .25, totalTokens: 100, modelBreakdowns: [model] });
+
+test('all-time compares calendar-day averages across the complete history', () => {
+   const history = [
+      { ...row('2026-09-05'), totalCost: 9 },
+      { ...row('2026-09-01'), totalCost: 4 },
+      { ...row('2026-09-06'), totalCost: 999 },
+   ];
+   assert.deepEqual(allTimeCostComparison(history, '2026-09-05'), { previous: 2, current: 3 });
+   assert.deepEqual(allTimeCostComparison([row('2026-09-01')], '2026-09-04'), { previous: .125, current: 0 });
+});
+
+test('all-time handles empty, single-day and zero-cost history without invented growth', () => {
+   assert.equal(allTimeCostComparison([], '2026-09-01'), null);
+   assert.equal(allTimeCostComparison([row('2026-09-01')], '2026-09-01'), null);
+   assert.deepEqual(allTimeCostComparison([
+      { ...row('2026-09-01'), totalCost: 0 }, row('2026-09-02'),
+   ], '2026-09-02'), { previous: 0, current: .25 });
+   assert.deepEqual(allTimeCostComparison([
+      { ...row('2026-09-01'), totalCost: 0 },
+   ], '2026-09-02'), { previous: 0, current: 0 });
+});
 
 test('accepts legacy date and new period fields and sorts chronological rows', () => {
    const legacy = row('2026-09-20');
