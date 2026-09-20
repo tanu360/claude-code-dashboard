@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Activity,
   DollarSign,
@@ -51,8 +51,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { UsageResponse, Currency, DailyUsage, TimePeriod } from '@/types/usage';
 import { useTranslations, type Locale } from '@/locales';
 import { useTheme } from '@/components/theme-provider';
-
-type UsageTotals = UsageResponse['totals'];
+import { addDays, aggregateRows, emptyTotals, periodKey, sumRows } from '@/lib/usage';
 
 type ModelStats = {
   inputTokens: number;
@@ -69,13 +68,15 @@ export default function Dashboard() {
   const [currency, setCurrency] = useState<Currency>('USD');
   const [language, setLanguage] = useState<'en' | 'hi'>('en');
   const [timePeriod, setTimePeriod] = useState<TimePeriod>('daily');
-  const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({});
+  const [error, setError] = useState<string | null>(null);
+  const manualRate = useRef(false);
+  const [rateDate, setRateDate] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   // const [ratesLoading, setRatesLoading] = useState(false);
-  const [currentRate, setCurrentRate] = useState<number>(83);
+  const [currentRate, setCurrentRate] = useState<number>(0);
   const [isEditingRate, setIsEditingRate] = useState(false);
-  const [inputRate, setInputRate] = useState<string>('83');
+  const [inputRate, setInputRate] = useState<string>('');
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [sortField, setSortField] = useState<string>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -101,32 +102,24 @@ export default function Dashboard() {
       const usageData = await response.json();
       setData(usageData);
 
-      // Fetch exchange rate only once per session unless manually refreshed
-      const rates: Record<string, number> = {};
-      let fetchedRate = 83; // Default fallback
-
-      // Only fetch the most recent exchange rate instead of all dates
-      if (usageData.daily.length > 0) {
-        try {
-          const latestDate = usageData.daily[usageData.daily.length - 1].date; // Get latest date
-          const rateResponse = await fetch(`/api/exchange-rate?date=${latestDate}`, { headers });
-          const rateData = await rateResponse.json();
-          fetchedRate = rateData.rate;
-        } catch {
-          // Keep default rate as fallback
+      setError(null);
+      setCurrentPage(1);
+      try {
+        const rateResponse = await fetch('/api/exchange-rate', { headers });
+        if (!rateResponse.ok) throw new Error('Exchange rate unavailable');
+        const rateData = await rateResponse.json();
+        if (!Number.isFinite(rateData.rate) || rateData.rate <= 0) throw new Error('Invalid exchange rate');
+        if (!manualRate.current) {
+          setCurrentRate(rateData.rate);
+          setInputRate(String(rateData.rate));
+          setRateDate(rateData.date);
         }
+      } catch {
+        if (!manualRate.current) setRateDate(null);
       }
-
-      // Apply the same rate to all dates to avoid multiple API calls
-      for (const day of usageData.daily) {
-        rates[day.date] = fetchedRate;
-      }
-
-      setExchangeRates(rates);
-      setCurrentRate(fetchedRate);
-      setInputRate(fetchedRate.toString());
     } catch (error) {
       console.error('Error fetching data:', error);
+      setError('Usage refresh failed. Previously loaded data may be out of date.');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -150,24 +143,26 @@ export default function Dashboard() {
   // Reset pagination when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [minCostFilter, timePeriod, sortField, sortOrder]);
+  }, [minCostFilter, timePeriod, sortField, sortOrder, currency, currentRate]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
     await fetchData();
   };
 
-  const formatCurrency = (amount: number, date?: string) => {
+  const formatCurrency = (amount: number) => {
+    if (!Number.isFinite(amount)) return 'N/A';
     if (currency === 'INR') {
-      // Use specific date rate, or current rate if no date provided
-      const rate = date && exchangeRates[date]
-        ? exchangeRates[date]
-        : currentRate;
-      const inrAmount = amount * rate;
-      return `₹${inrAmount.toLocaleString('hi-IN', { maximumFractionDigits: 0 })}`;
+      if (!currentRate) return 'N/A';
+      return `₹${(amount * currentRate).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     }
     return `$${amount.toFixed(2)}`;
   };
+
+  const matchesCostFilter = (item: DailyUsage) => minCostFilter === '' ||
+    item.totalCost * (currency === 'INR' ? currentRate : 1) >= Number(minCostFilter);
+
+  const displayDate = (key: string) => new Date(`${key}T00:00:00`);
 
   const formatTokenCount = (count: number): string => {
     if (count < 1000) {
@@ -181,14 +176,11 @@ export default function Dashboard() {
 
   const handleRateChange = () => {
     const newRate = parseFloat(inputRate);
-    if (!isNaN(newRate) && newRate > 0) {
+    if (Number.isFinite(newRate) && newRate > 0) {
       setCurrentRate(newRate);
-      // Update all exchange rates to use the new rate for consistency
-      const updatedRates: Record<string, number> = {};
-      Object.keys(exchangeRates).forEach(date => {
-        updatedRates[date] = newRate;
-      });
-      setExchangeRates(updatedRates);
+      manualRate.current = true;
+      setRateDate('Manual');
+      setCurrency('INR');
       setIsEditingRate(false);
     }
   };
@@ -202,100 +194,11 @@ export default function Dashboard() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const aggregateDataByWeek = (dailyData: DailyUsage[]) => {
-    const weeklyData = new Map();
-
-    dailyData.forEach(day => {
-      const date = new Date(day.date);
-      // ccusage groups weekly reports by the Sunday week start.
-      const dayOfWeek = date.getDay();
-      const weekStart = new Date(date);
-      weekStart.setDate(date.getDate() - dayOfWeek);
-      const weekKey = weekStart.toISOString().split('T')[0];
-
-      if (!weeklyData.has(weekKey)) {
-        weeklyData.set(weekKey, {
-          date: weekKey,
-          totalCost: 0,
-          totalTokens: 0,
-          inputTokens: 0,
-          outputTokens: 0,
-          cacheCreationTokens: 0,
-          cacheReadTokens: 0,
-          count: 0
-        });
-      }
-
-      const weekData = weeklyData.get(weekKey);
-      weekData.totalCost += day.totalCost;
-      weekData.totalTokens += day.totalTokens;
-      weekData.inputTokens += day.inputTokens;
-      weekData.outputTokens += day.outputTokens;
-      weekData.cacheCreationTokens += day.cacheCreationTokens;
-      weekData.cacheReadTokens += day.cacheReadTokens;
-      weekData.count += 1;
-    });
-
-    return Array.from(weeklyData.values()).sort((a, b) => a.date.localeCompare(b.date));
-  };
-
-  const aggregateDataByMonth = (dailyData: DailyUsage[]) => {
-    const monthlyData = new Map();
-
-    dailyData.forEach(day => {
-      const date = new Date(day.date);
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`;
-
-      if (!monthlyData.has(monthKey)) {
-        monthlyData.set(monthKey, {
-          date: monthKey,
-          totalCost: 0,
-          totalTokens: 0,
-          inputTokens: 0,
-          outputTokens: 0,
-          cacheCreationTokens: 0,
-          cacheReadTokens: 0,
-          count: 0
-        });
-      }
-
-      const monthData = monthlyData.get(monthKey);
-      monthData.totalCost += day.totalCost;
-      monthData.totalTokens += day.totalTokens;
-      monthData.inputTokens += day.inputTokens;
-      monthData.outputTokens += day.outputTokens;
-      monthData.cacheCreationTokens += day.cacheCreationTokens;
-      monthData.cacheReadTokens += day.cacheReadTokens;
-      monthData.count += 1;
-    });
-
-    return Array.from(monthlyData.values()).sort((a, b) => a.date.localeCompare(b.date));
-  };
-
-  const getEmptyTotals = (): UsageTotals => ({
-    inputTokens: 0,
-    outputTokens: 0,
-    cacheCreationTokens: 0,
-    cacheReadTokens: 0,
-    totalTokens: 0,
-    totalCost: 0,
-  });
-
-  const sumUsageRows = (rows: DailyUsage[]): UsageTotals =>
-    rows.reduce((totals, row) => ({
-      inputTokens: totals.inputTokens + (row.inputTokens || 0),
-      outputTokens: totals.outputTokens + (row.outputTokens || 0),
-      cacheCreationTokens: totals.cacheCreationTokens + (row.cacheCreationTokens || 0),
-      cacheReadTokens: totals.cacheReadTokens + (row.cacheReadTokens || 0),
-      totalTokens: totals.totalTokens + (row.totalTokens || 0),
-      totalCost: totals.totalCost + (row.totalCost || 0),
-    }), getEmptyTotals());
-
-  const addDaysToDateKey = (dateKey: string, days: number) => {
-    const date = new Date(`${dateKey}T00:00:00`);
-    date.setDate(date.getDate() + days);
-    return date.toISOString().split('T')[0];
-  };
+  const aggregateDataByWeek = (rows: DailyUsage[]) => aggregateRows(rows, 'weekly');
+  const aggregateDataByMonth = (rows: DailyUsage[]) => aggregateRows(rows, 'monthly');
+  const getEmptyTotals = emptyTotals;
+  const sumUsageRows = sumRows;
+  const addDaysToDateKey = addDays;
 
   const getPeriodData = (period: TimePeriod): DailyUsage[] => {
     if (!data) return [];
@@ -332,53 +235,15 @@ export default function Dashboard() {
     return dailyRows.filter(day => day.date.startsWith(monthKey));
   };
 
-  const isRenderableModelName = (modelName: string) => {
-    const normalizedName = modelName.trim().toLowerCase();
-    return normalizedName !== '' &&
-      normalizedName !== 'unknown' &&
-      normalizedName !== 'unknown model' &&
-      normalizedName !== 'n/a';
-  };
-
-  const formatModelDisplayName = (modelName: string) => {
-    const normalizedName = modelName.toLowerCase();
-    const vendorPrefix = normalizedName.startsWith('kiro-')
-      ? 'Kiro '
-      : normalizedName.startsWith('openlimit/')
-        ? 'OpenLimit '
-        : '';
-    const modeSuffix = normalizedName.includes('thinking')
-      ? ` ${t.models.thinking}`
-      : normalizedName.includes('agentic')
-        ? ` ${t.models.agentic}`
-        : '';
-
-    if (normalizedName.includes('opus-4-7')) return `${vendorPrefix}${t.models.claudeOpus47}${modeSuffix}`;
-    if (normalizedName.includes('opus-4-6')) return `${vendorPrefix}${t.models.claudeOpus46}${modeSuffix}`;
-    if (normalizedName.includes('opus-4-5')) return `${vendorPrefix}${t.models.claudeOpus45}${modeSuffix}`;
-    if (normalizedName.includes('opus-4-1')) return `${vendorPrefix}${t.models.claudeOpus41}${modeSuffix}`;
-    if (normalizedName.includes('sonnet-4-6') || normalizedName.includes('sonnet-4.6')) return `${vendorPrefix}${t.models.claudeSonnet46}${modeSuffix}`;
-    if (normalizedName.includes('sonnet-4-5')) return `${vendorPrefix}${t.models.claudeSonnet45}${modeSuffix}`;
-    if (normalizedName.includes('sonnet-4')) return `${vendorPrefix}${t.models.claudeSonnet4}${modeSuffix}`;
-    if (normalizedName.includes('haiku-4-5')) return `${vendorPrefix}${t.models.claudeHaiku45}${modeSuffix}`;
-    if (normalizedName.includes('haiku')) return `${vendorPrefix}${t.models.claudeHaiku}${modeSuffix}`;
-
-    return modelName
-      .replace(/^openlimit\//i, 'OpenLimit ')
-      .replace(/^models\//i, '')
-      .replace(/claude-/gi, 'Claude ')
-      .replace(/-\d{8}/g, '')
-      .replace(/-/g, ' ')
-      .replace(/\b\w/g, char => char.toUpperCase());
-  };
+  const formatModelDisplayName = (modelName: string) => modelName;
 
   const getTopModelStats = (rows: DailyUsage[]) => {
-    const modelStats: Record<string, ModelStats> = {};
+    const modelStats: Record<string, ModelStats> = Object.create(null);
 
     rows.forEach(day => {
       day.modelBreakdowns?.forEach(breakdown => {
         const modelName = breakdown.modelName || '';
-        if (!isRenderableModelName(modelName)) return;
+
 
         if (!modelStats[modelName]) {
           modelStats[modelName] = {
@@ -405,8 +270,7 @@ export default function Dashboard() {
     });
 
     return Object.entries(modelStats)
-      .sort(([, a], [, b]) => b.totalCost - a.totalCost || b.totalTokens - a.totalTokens)
-      .slice(0, 3);
+      .sort(([, a], [, b]) => b.totalCost - a.totalCost || b.totalTokens - a.totalTokens);
   };
 
   const handleSort = (field: string) => {
@@ -457,9 +321,9 @@ export default function Dashboard() {
       }
 
       if (sortOrder === 'asc') {
-        return aValue > bValue ? 1 : -1;
+        return aValue === bValue ? 0 : aValue > bValue ? 1 : -1;
       } else {
-        return aValue < bValue ? 1 : -1;
+        return aValue === bValue ? 0 : aValue < bValue ? 1 : -1;
       }
     });
   };
@@ -481,7 +345,7 @@ export default function Dashboard() {
     return processedData
       .slice()
       .map(item => {
-        const date = new Date(item.date);
+        const date = displayDate(item.date);
         let dateLabel = '';
 
         if (timePeriod === 'daily' || timePeriod === 'all') {
@@ -561,22 +425,22 @@ export default function Dashboard() {
   }
 
   const selectedPeriodData = getPeriodData(timePeriod);
-  const currentPeriodUsage = timePeriod === 'all'
-    ? null
-    : selectedPeriodData[selectedPeriodData.length - 1] || null;
-  const previousPeriodUsage = timePeriod === 'all'
-    ? null
-    : selectedPeriodData[selectedPeriodData.length - 2] || null;
+  const today = data.asOf || new Intl.DateTimeFormat('en-CA').format(new Date());
+  const currentKey = timePeriod === 'all' ? today : periodKey(today, timePeriod);
+  const previousKey = timePeriod === 'all' ? today : timePeriod === 'daily' ? addDays(currentKey, -1)
+    : timePeriod === 'weekly' ? addDays(currentKey, -7) : periodKey(addDays(currentKey, -1), 'monthly');
+  const currentPeriodUsage = timePeriod === 'all' ? null : selectedPeriodData.find(row => row.date === currentKey) || { date: currentKey, ...emptyTotals() };
+  const previousPeriodUsage = timePeriod === 'all' ? null : selectedPeriodData.find(row => row.date === previousKey) || null;
   const selectedTotals = timePeriod === 'all'
     ? data.totals
     : currentPeriodUsage
       ? sumUsageRows([currentPeriodUsage])
       : getEmptyTotals();
   const selectedDailyRows = getDailyRowsForPeriod(timePeriod, currentPeriodUsage, data.daily);
-  const selectedActiveDays = selectedDailyRows.filter(day => (day.totalCost || 0) > 0).length;
+  const selectedActiveDays = selectedDailyRows.filter(day => day.totalTokens > 0 || day.totalCost > 0).length;
   const selectedTotalDays = timePeriod === 'all'
-    ? data.daily.length
-    : Math.max(selectedDailyRows.length, currentPeriodUsage ? 1 : 0);
+    ? (data.daily.length ? Math.max(1, Math.round((Date.parse(today) - Date.parse(data.daily[0].date)) / 86400000) + 1) : 0)
+    : Math.round((Date.parse(today) - Date.parse(currentKey)) / 86400000) + 1;
   const selectedAverageCost = selectedTotalDays > 0 ? selectedTotals.totalCost / selectedTotalDays : 0;
   const selectedModelRows = timePeriod === 'all'
     ? data.daily
@@ -648,12 +512,12 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              {currency === 'INR' && (
+              {(currency === 'INR' || isEditingRate) && (
                 <div className="flex items-center gap-2 text-sm border rounded-lg px-2 py-1 bg-background">
                   {!isEditingRate ? (
                     <>
                       <span className="text-muted-foreground">1 USD =</span>
-                      <span className="font-medium">₹{currentRate.toFixed(2)}</span>
+                      <span className="font-medium">{currentRate ? `₹${currentRate.toFixed(2)}` : 'Rate unavailable'}</span>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -699,7 +563,7 @@ export default function Dashboard() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setCurrency(currency === 'USD' ? 'INR' : 'USD')}
+                  onClick={() => { if (currency === 'USD' && !currentRate) setIsEditingRate(true); else setCurrency(currency === 'USD' ? 'INR' : 'USD'); }}
                   title={currency === 'USD' ? 'Switch to INR' : 'Switch to USD'}
                 >
                   {currency === 'USD' ? (
@@ -883,7 +747,7 @@ export default function Dashboard() {
                     {(() => {
                       const cacheReads = selectedTotals.cacheReadTokens || 0;
                       const inputTokens = selectedTotals.inputTokens || 0;
-                      const totalInput = inputTokens + cacheReads;
+                      const totalInput = inputTokens + cacheReads + selectedTotals.cacheCreationTokens;
                       const cacheEfficiency = totalInput > 0 ? (cacheReads / totalInput) * 100 : 0;
                       return `${cacheEfficiency.toFixed(1)}%`;
                     })()}
@@ -894,7 +758,7 @@ export default function Dashboard() {
                       {(() => {
                         const cacheReads = selectedTotals.cacheReadTokens || 0;
                         const inputTokens = selectedTotals.inputTokens || 0;
-                        const totalInput = inputTokens + cacheReads;
+                        const totalInput = inputTokens + cacheReads + selectedTotals.cacheCreationTokens;
                         const cacheEfficiency = totalInput > 0 ? (cacheReads / totalInput) * 100 : 0;
                         return cacheEfficiency > 80 ? t.stats.excellent : cacheEfficiency > 60 ? t.stats.good : cacheEfficiency > 40 ? t.stats.average : t.stats.low;
                       })()}
@@ -940,6 +804,14 @@ export default function Dashboard() {
           </Card>
         </div>
 
+        <p className="text-sm text-muted-foreground" role="status">
+          {data.source || 'Claude Code local logs'} · {data.timezone} · {today}.
+          {' '}Costs are API estimates, not subscription charges or limits.
+          {' '}INR rate: {rateDate || (currentRate ? 'previously loaded; refresh unavailable' : 'unavailable; enter a manual rate')}.
+          {!!data.unpricedModels?.length && ` Pricing unavailable for: ${data.unpricedModels.join(', ')}. Cost totals exclude unpriced usage.`}
+          {error && ` ${error}`}
+        </p>
+
         {/* Enhanced Plan Comparison & Insights */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Plan Comparison Card */}
@@ -956,22 +828,22 @@ export default function Dashboard() {
             <CardContent className="space-y-6">
               {(() => {
                 // Calculate current month's cost (billing is monthly)
-                const now = new Date();
+                const now = displayDate(today);
                 const currentMonth = now.getMonth();
                 const currentYear = now.getFullYear();
                 const monthlyCost = data.daily
                   .filter(day => {
-                    const dayDate = new Date(day.date);
+                    const dayDate = displayDate(day.date);
                     return dayDate.getMonth() === currentMonth && dayDate.getFullYear() === currentYear;
                   })
                   .reduce((sum, day) => sum + (day.totalCost || 0), 0);
 
                 const max100Savings = Math.max(0, 100 - monthlyCost);
                 const max200Savings = Math.max(0, 200 - monthlyCost);
-                const currentUtilization100 = Math.min((monthlyCost / 100) * 100, 100);
-                const currentUtilization200 = Math.min((monthlyCost / 200) * 100, 100);
+                const currentUtilization100 = (monthlyCost / 100) * 100;
+                const currentUtilization200 = (monthlyCost / 200) * 100;
 
-                const actualPlan = monthlyCost <= 100 ? 'Max $100' : monthlyCost <= 200 ? 'Max $200' : 'Over Budget';
+                const actualPlan = monthlyCost <= 100 ? '$100 reference' : monthlyCost <= 200 ? '$200 reference' : 'Above $200 reference';
                 const planStatus = monthlyCost <= 100 ? 'success' : monthlyCost <= 200 ? 'warning' : 'danger';
 
                 return (
@@ -1010,18 +882,18 @@ export default function Dashboard() {
                         </p>
                       </div>
 
-                      {/* Max $100 Plan */}
+                      {/* $100 reference Plan */}
                       <div className="p-4 rounded-lg border bg-success/10">
                         <div className="flex items-center gap-2 mb-3">
                           <CreditCard className="w-4 h-4 text-success" />
-                          <h4 className="font-semibold text-sm">Max $100</h4>
+                          <h4 className="font-semibold text-sm">$100 reference</h4>
                         </div>
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
                             <span className="text-sm">{t.plan.usage}:</span>
                             <span className="text-sm font-medium">{currentUtilization100.toFixed(1)}%</span>
                           </div>
-                          <Progress value={currentUtilization100} className="h-2" />
+                          <Progress value={Math.min(currentUtilization100, 100)} className="h-2" />
                           <p className={`text-lg font-bold ${max100Savings > 0 ? 'text-primary' : 'text-muted-foreground'}`}>
                             {max100Savings > 0
                               ? `${formatCurrency(max100Savings)} ${t.plan.saving}`
@@ -1031,18 +903,18 @@ export default function Dashboard() {
                         </div>
                       </div>
 
-                      {/* Max $200 Plan */}
+                      {/* $200 reference Plan */}
                       <div className="p-4 rounded-lg border bg-muted/30">
                         <div className="flex items-center gap-2 mb-3">
                           <CreditCard className="w-4 h-4" />
-                          <h4 className="font-semibold text-sm">Max $200</h4>
+                          <h4 className="font-semibold text-sm">$200 reference</h4>
                         </div>
                         <div className="space-y-2">
                           <div className="flex items-center justify-between">
                             <span className="text-sm">{t.plan.usage}:</span>
                             <span className="text-sm font-medium">{currentUtilization200.toFixed(1)}%</span>
                           </div>
-                          <Progress value={currentUtilization200} className="h-2" />
+                          <Progress value={Math.min(currentUtilization200, 100)} className="h-2" />
                           <p className={`text-lg font-bold ${max200Savings > 0 ? 'text-chart-2' : 'text-muted-foreground'}`}>
                             {max200Savings > 0
                               ? `${formatCurrency(max200Savings)} ${t.plan.saving}`
@@ -1074,7 +946,7 @@ export default function Dashboard() {
                             <div className="flex items-center gap-2 mb-3">
                               <div className={`w-3 h-3 bg-chart-${(index % 5) + 1} rounded-full`}></div>
                               <h5 className="font-medium text-sm">{formatModelDisplayName(modelName)}</h5>
-                              <span className="text-base font-bold text-chart-2">{formatCurrency(stats.totalCost)}</span>
+                              <span className="text-base font-bold text-chart-2">{data.unpricedModels?.includes(modelName) ? 'Pricing unavailable' : formatCurrency(stats.totalCost)}</span>
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                               <div className="text-center p-2 rounded">
@@ -1122,19 +994,19 @@ export default function Dashboard() {
             <CardContent className="space-y-4">
               {(() => {
                 // Calculate current month's cost for accurate metrics
-                const now = new Date();
+                const now = displayDate(today);
                 const currentMonth = now.getMonth();
                 const currentYear = now.getFullYear();
                 const currentMonthDays = data.daily.filter(day => {
-                  const dayDate = new Date(day.date);
+                  const dayDate = displayDate(day.date);
                   return dayDate.getMonth() === currentMonth && dayDate.getFullYear() === currentYear;
                 });
                 const currentMonthCost = currentMonthDays.reduce((sum, day) => sum + (day.totalCost || 0), 0);
-                const daysInMonth = currentMonthDays.length || 1;
+                const daysInMonth = now.getDate();
                 const avgDailyCost = currentMonthCost / daysInMonth;
                 const daysRemaining = new Date(currentYear, currentMonth + 1, 0).getDate() - now.getDate();
                 const projectedMonthlyCost = currentMonthCost + (avgDailyCost * daysRemaining);
-                const cacheEfficiency = ((data.totals.cacheReadTokens / (data.totals.cacheReadTokens + data.totals.inputTokens)) * 100) || 0;
+                const cacheEfficiency = ((selectedTotals.cacheReadTokens / (selectedTotals.cacheReadTokens + selectedTotals.inputTokens + selectedTotals.cacheCreationTokens)) * 100) || 0;
 
                 return (
                   <>
@@ -1158,7 +1030,7 @@ export default function Dashboard() {
                       <div className="flex items-center justify-between p-3">
                         <div>
                           <p className="text-sm font-medium">{t.keyMetrics.costPerMillionTokens}</p>
-                          <p className="text-lg font-bold text-magenta">{formatCurrency((data.totals.totalCost / (data.totals.totalTokens / 1000000)))}</p>
+                          <p className="text-lg font-bold text-magenta">{formatCurrency(selectedTotals.totalTokens > 0 ? selectedTotals.totalCost / (selectedTotals.totalTokens / 1000000) : 0)}</p>
                         </div>
                         <Hash className="w-8 h-8 text-magenta" />
                       </div>
@@ -1183,25 +1055,26 @@ export default function Dashboard() {
                           <p className="text-sm font-medium">{t.keyMetrics.peakUsageDay}</p>
                           <p className="text-lg text-chart-2 font-bold text-chart">
                             {(() => {
-                              const peakDay = data.daily.reduce((max, day) =>
+                              const peakDay = selectedDailyRows.reduce((max, day) =>
                                 (day.totalCost || 0) > (max.totalCost || 0) ? day : max,
-                                data.daily[0] || { totalCost: 0 }
+                                selectedDailyRows[0] || { totalCost: 0 }
                               );
                               return formatCurrency(peakDay.totalCost || 0);
                             })()}
                           </p>
                           <p className="text-xs text-muted-foreground">
                             {(() => {
-                              const peakDay = data.daily.reduce((max, day) =>
+                              const peakDay = selectedDailyRows.reduce((max, day) =>
                                 (day.totalCost || 0) > (max.totalCost || 0) ? day : max,
-                                data.daily[0] || { totalCost: 0, date: '' }
+                                selectedDailyRows[0] || { totalCost: 0, date: '' }
                               );
-                              const date = new Date(peakDay.date);
+                              if (!peakDay.date) return t.keyMetrics.noData;
+                              const date = displayDate(peakDay.date);
                               const formattedDate = date.toLocaleDateString('en-US', {
                                 month: 'short',
                                 day: 'numeric'
                               });
-                              const avgCost = avgDailyCost;
+                              const avgCost = selectedAverageCost;
                               const isHigh = (peakDay.totalCost || 0) > avgCost * 2;
                               const status = isHigh ? t.trends.highPeak : t.trends.moderatePeak;
                               return `${status} ${t.trends.date}: ${formattedDate}`;
@@ -1216,7 +1089,7 @@ export default function Dashboard() {
                           <p className="text-sm font-medium">{t.keyMetrics.leastUsageDay}</p>
                           <p className="text-lg font-bold">
                             {(() => {
-                              const activeDays = data.daily.filter(day => (day.totalCost || 0) > 0);
+                              const activeDays = selectedDailyRows.filter(day => day.totalCost > 0);
                               if (activeDays.length === 0) return formatCurrency(0);
 
                               const leastDay = activeDays.reduce((min, day) =>
@@ -1228,19 +1101,19 @@ export default function Dashboard() {
                           </p>
                           <p className="text-xs text-muted-foreground">
                             {(() => {
-                              const activeDays = data.daily.filter(day => (day.totalCost || 0) > 0);
+                              const activeDays = selectedDailyRows.filter(day => day.totalCost > 0);
                               if (activeDays.length === 0) return t.keyMetrics.noData;
 
                               const leastDay = activeDays.reduce((min, day) =>
                                 (day.totalCost || 0) < (min.totalCost || 0) ? day : min,
                                 activeDays[0]
                               );
-                              const date = new Date(leastDay.date);
+                              const date = displayDate(leastDay.date);
                               const formattedDate = date.toLocaleDateString('en-US', {
                                 month: 'short',
                                 day: 'numeric'
                               });
-                              const avgCostForComparison = avgDailyCost;
+                              const avgCostForComparison = selectedAverageCost;
                               const isLow = (leastDay.totalCost || 0) < avgCostForComparison * 0.5;
                               const status = isLow ? t.trends.veryLow : t.trends.low;
                               return `${status} ${t.trends.date}: ${formattedDate}`;
@@ -1270,7 +1143,7 @@ export default function Dashboard() {
                           <div className="flex items-center gap-3 p-3 rounded-lg bg-yellow-50 border border-yellow-200">
                             <AlertTriangle className="w-4 h-4 text-yellow-600 flex-shrink-0" />
                             <p className="text-xs text-yellow-700 font-medium">
-                              Max $100 {t.recommendations.approachingLimit}
+                              $100 reference {t.recommendations.approachingLimit}
                             </p>
                           </div>
                         )}
@@ -1439,14 +1312,14 @@ export default function Dashboard() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {(() => {
                       // Calculate insights from data
-                      const totalTokens = data.totals.totalTokens || 0;
-                      const totalCost = data.totals.totalCost || 0;
-                      const activeDays = data.daily.filter(day => (day.totalCost || 0) > 0).length;
+                      const totalTokens = selectedTotals.totalTokens;
+                      const totalCost = selectedTotals.totalCost;
+                      const activeDays = selectedActiveDays;
 
                       // Calculate efficiency metrics
-                      const cacheReads = data.totals.cacheReadTokens || 0;
-                      const inputTokens = data.totals.inputTokens || 0;
-                      const totalInput = inputTokens + cacheReads;
+                      const cacheReads = selectedTotals.cacheReadTokens;
+                      const inputTokens = selectedTotals.inputTokens;
+                      const totalInput = inputTokens + cacheReads + selectedTotals.cacheCreationTokens;
                       const cacheRatio = totalInput > 0 ? (cacheReads / totalInput) * 100 : 0;
 
                       return (
@@ -1456,13 +1329,12 @@ export default function Dashboard() {
                             <CardContent className="p-4">
                               <div className="text-center space-y-2">
                                 <p className="text-sm text-muted-foreground">
-                                  {t.insights.costEfficiency}
+                                  {t.keyMetrics.costPerMillionTokens}
                                 </p>
                                 <p className="text-2xl font-bold text-success">
                                   {(() => {
                                     const costPerMToken = totalTokens > 0 ? totalCost / (totalTokens / 1000000) : 0;
-                                    const efficiencyScore = Math.max(0, Math.min(100, 100 - (costPerMToken * 10)));
-                                    return `${efficiencyScore.toFixed(0)}/100`;
+                                    return formatCurrency(costPerMToken);
                                   })()}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
@@ -1481,7 +1353,7 @@ export default function Dashboard() {
                                 </p>
                                 <p className="text-2xl font-bold text-primary">
                                   {(() => {
-                                    const consistencyRatio = activeDays / data.daily.length;
+                                    const consistencyRatio = selectedTotalDays ? activeDays / selectedTotalDays : 0;
                                     return consistencyRatio > 0.8 ? t.patterns.regular :
                                       consistencyRatio > 0.5 ? t.patterns.moderate :
                                         t.patterns.sporadic;
@@ -1593,11 +1465,10 @@ export default function Dashboard() {
                         const totalTokens = selectedTotals.totalTokens || 0;
                         const totalCost = selectedTotals.totalCost || 0;
                         const cacheReads = selectedTotals.cacheReadTokens || 0;
-                        const totalInput = (selectedTotals.inputTokens || 0) + cacheReads;
+                        const totalInput = selectedTotals.inputTokens + cacheReads + selectedTotals.cacheCreationTokens;
 
                         // Cost efficiency (lower cost per token is better)
                         const costPerToken = totalTokens > 0 ? totalCost / (totalTokens / 1000000) : 0;
-                        const costEfficiency = Math.max(0, Math.min(100, 100 - (costPerToken * 5))); // Scale to 0-100%
 
                         // Cache hit rate
                         const cacheHitRate = totalInput > 0 ? (cacheReads / totalInput) * 100 : 0;
@@ -1631,10 +1502,9 @@ export default function Dashboard() {
                             <div className="space-y-4">
                               <div className="space-y-2">
                                 <div className="flex justify-between text-sm">
-                                  <span>{t.trends.costEfficiency}</span>
-                                  <span className="font-medium">{costEfficiency.toFixed(0)}%</span>
+                                  <span>{t.keyMetrics.costPerMillionTokens}</span>
+                                  <span className="font-medium">{formatCurrency(costPerToken)}</span>
                                 </div>
-                                <Progress value={costEfficiency} className="h-2" />
                                 <p className="text-xs text-muted-foreground">
                                   {t.trends.costPerToken.replace('{cost}', formatCurrency(costPerToken))}
                                 </p>
@@ -1677,9 +1547,9 @@ export default function Dashboard() {
                                   </p>
                                   <p className="text-lg font-bold text-primary">
                                     {(() => {
-                                      const totalCost = data.totals.totalCost;
-                                      const avgDailyCost = totalCost / data.daily.length;
-                                      const projectedMonthlyCost = avgDailyCost * 30;
+                                      const monthCost = data.daily.filter(day => day.date.startsWith(today.slice(0, 7))).reduce((sum, day) => sum + day.totalCost, 0);
+                                      const now = displayDate(today);
+                                      const projectedMonthlyCost = monthCost / now.getDate() * new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
                                       return formatCurrency(projectedMonthlyCost);
                                     })()}
                                   </p>
@@ -1692,7 +1562,7 @@ export default function Dashboard() {
                                     {growthLabel}
                                   </p>
                                   <p className={`text-lg font-bold ${growthRate >= 0 ? 'text-success' : 'text-destructive'}`}>
-                                    {growthRate >= 0 ? '+' : ''}{growthRate.toFixed(1)}%
+                                    {previousPeriodCost > 0 ? `${growthRate >= 0 ? '+' : ''}${growthRate.toFixed(1)}%` : t.stats.insufficientData}
                                   </p>
                                   <p className="text-xs text-muted-foreground">
                                     {comparisonLabel}
@@ -1718,14 +1588,7 @@ export default function Dashboard() {
                                     </p>
                                   </div>
                                 )}
-                                {costEfficiency > 80 && (
-                                  <div className="flex items-center gap-3 p-3 rounded-lg bg-success/10 border border-success/20">
-                                    <CheckCircle className="w-4 h-4 text-success flex-shrink-0" />
-                                    <p className="text-xs text-success font-medium">
-                                      {t.insights.excellentCostEfficiency}
-                                    </p>
-                                  </div>
-                                )}
+
                               </div>
                             </div>
                           </>
@@ -1920,7 +1783,7 @@ export default function Dashboard() {
 
                     // Apply filters
                     const filteredData = sortedData.filter(item => {
-                      const costFilter = minCostFilter === '' || (item.totalCost || 0) >= parseFloat(minCostFilter || '0');
+                      const costFilter = minCostFilter === '' || matchesCostFilter(item);
                       return costFilter;
                     });
 
@@ -1936,21 +1799,21 @@ export default function Dashboard() {
                             <td className="py-3 px-2 text-xs">
                               <div className="flex items-center gap-1">
                                 {timePeriod === 'daily' || timePeriod === 'all'
-                                  ? new Date(item.date).toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US')
+                                  ? displayDate(item.date).toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US')
                                   : timePeriod === 'weekly'
                                     ? (() => {
-                                      const startDate = new Date(item.date);
+                                      const startDate = displayDate(item.date);
                                       const endDate = new Date(startDate);
                                       endDate.setDate(startDate.getDate() + 6);
                                       return `${startDate.toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', { month: 'short', day: 'numeric' })} - ${endDate.toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', { month: 'short', day: 'numeric' })}`;
                                     })()
-                                    : new Date(item.date).toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', { year: 'numeric', month: 'long' })
+                                    : displayDate(item.date).toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-US', { year: 'numeric', month: 'long' })
                                 }
                               </div>
                             </td>
                             <td className="py-3 px-2 text-sm font-semibold">
                               <span className="text-success font-bold">
-                                {formatCurrency(item.totalCost, item.date)}
+                                {formatCurrency(item.totalCost)}
                               </span>
                             </td>
                             <td className="py-3 px-2 text-xs">
@@ -2000,7 +1863,7 @@ export default function Dashboard() {
 
               const sortedData = getSortedData(dataToShow);
               const filteredData = sortedData.filter(item => {
-                const costFilter = minCostFilter === '' || (item.totalCost || 0) >= parseFloat(minCostFilter || '0');
+                const costFilter = minCostFilter === '' || matchesCostFilter(item);
                 return costFilter;
               });
 

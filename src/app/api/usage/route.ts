@@ -1,108 +1,23 @@
 import { NextResponse } from 'next/server';
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
-import type { DailyUsage, UsageResponse } from '@/types/usage';
+import { normalizeReport, parseReport } from '@/lib/usage';
 
-const execAsync = promisify(exec);
-const EXEC_OPTIONS = { maxBuffer: 1024 * 1024 * 20 };
-
-type UsageTotals = UsageResponse['totals'];
-
-type RawPeriodUsage = Omit<DailyUsage, 'date'> & {
-  date?: string;
-  week?: string;
-  month?: string;
-};
-
-type CcusageReport = {
-  daily?: RawPeriodUsage[];
-  weekly?: RawPeriodUsage[];
-  monthly?: RawPeriodUsage[];
-  totals: UsageTotals;
-};
-
-async function checkAndInstallCcusage() {
-  try {
-    // Check if ccusage is available globally
-    await execAsync('ccusage --version', EXEC_OPTIONS);
-    return 'ccusage';
-  } catch {
-    // ccusage not found, install globally and use it
-    try {
-      await execAsync('npm install -g ccusage', EXEC_OPTIONS);
-      return 'ccusage';
-    } catch {
-      // Fallback to npx if global install fails
-      return 'npx ccusage';
-    }
-  }
-}
-
-function parseCcusageJson(stdout: string): CcusageReport {
-  // ccusage can prepend informational lines like
-  // "[ccusage] No valid configuration file found" before the JSON payload.
-  const jsonStart = stdout.indexOf('{');
-
-  if (jsonStart === -1) {
-    throw new Error('ccusage did not return a JSON object');
-  }
-
-  return JSON.parse(stdout.slice(jsonStart));
-}
-
-function normalizePeriodRows(
-  rows: RawPeriodUsage[] = [],
-  getDate: (row: RawPeriodUsage) => string
-): DailyUsage[] {
-  return rows.map(({ week: _week, month: _month, date: _date, ...row }) => ({
-    ...row,
-    date: getDate({ ...row, week: _week, month: _month, date: _date }),
-  }));
-}
-
-async function runCcusageReport(
-  ccusageCommand: string,
-  period: 'daily' | 'weekly' | 'monthly'
-): Promise<CcusageReport> {
-  const { stdout } = await execAsync(`${ccusageCommand} ${period} --json --breakdown`, EXEC_OPTIONS);
-  return parseCcusageJson(stdout);
-}
+const run = promisify(execFile);
+const options = { maxBuffer: 20 * 1024 * 1024, timeout: 120_000 };
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const ccusageCommand = await checkAndInstallCcusage();
-    const [dailyReport, weeklyReport, monthlyReport] = await Promise.all([
-      runCcusageReport(ccusageCommand, 'daily'),
-      runCcusageReport(ccusageCommand, 'weekly'),
-      runCcusageReport(ccusageCommand, 'monthly'),
-    ]);
-
-    const daily = normalizePeriodRows(
-      dailyReport.daily,
-      (row) => row.date || ''
-    );
-
-    const weekly = normalizePeriodRows(
-      weeklyReport.weekly,
-      (row) => row.week || row.date || ''
-    );
-
-    const monthly = normalizePeriodRows(
-      monthlyReport.monthly,
-      (row) => row.date || (row.month ? `${row.month}-01` : '')
-    );
-
-    return NextResponse.json({
-      daily,
-      weekly,
-      monthly,
-      totals: dailyReport.totals || weeklyReport.totals || monthlyReport.totals,
-    });
+    const { stdout: help } = await run('ccusage', ['--help'], options);
+    // New ccusage releases default to all agents; older releases are Claude-only.
+    const prefix = /^\s+claude\s/m.test(help) ? ['claude'] : [];
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const { stdout } = await run('ccusage', [...prefix, 'daily', '--json', '--breakdown', '--timezone', timezone], options);
+    const report = normalizeReport(parseReport(stdout));
+    return NextResponse.json({ ...report, timezone, asOf: new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()), source: 'Claude Code local logs' }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     console.error('Error fetching usage data:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch usage data' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Unable to read Claude Code usage. Check that ccusage is installed and its daily JSON report is valid.' }, { status: 500 });
   }
 }

@@ -48,19 +48,19 @@ export const hi: LocaleKeys = {
 
     // Plan Comparison
     plan: {
-        title: "मासिक योजना तुलना",
-        description: "Claude Code मासिक बिलिंग सीमा के विरुद्ध वर्तमान माह का प्रयोग",
+        title: "मासिक लागत तुलना",
+        description: "API लागत अनुमान की $100 / $200 से तुलना; ये सदस्यता सीमाएँ नहीं हैं",
         currentStatus: "वर्तमान स्थिति",
         currentUsage: "इस माह",
-        thisBillingPeriod: "वर्तमान बिलिंग माह",
+        thisBillingPeriod: "वर्तमान कैलेंडर माह",
         usage: "प्रयोग",
         saving: "शेष",
         over: "अधिक",
-        withinBudget: "बजट के भीतर",
+        withinBudget: "$100 से कम",
         moderateUsage: "मध्यम प्रयोग",
-        overBudget: "बजट से अधिक",
+        overBudget: "$200 से अधिक",
         totalSpend: "मासिक व्यय",
-        modelCostBreakdown: "शीर्ष 3 मॉडल व्यय विभाजन",
+        modelCostBreakdown: "मॉडल लागत विवरण",
         totalModelCost: "कुल मॉडल व्यय",
         cacheWrite: "कैश लेखन",
         cacheRead: "कैश पठन"

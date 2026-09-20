@@ -19,7 +19,7 @@ export const en = {
 
     // Stats Cards
     stats: {
-        totalCost: "Total Cost",
+        totalCost: "Estimated Cost",
         totalTokens: "Total Tokens",
         cacheEfficiency: "Cache Efficiency",
         activeDays: "Active Days",
@@ -46,19 +46,19 @@ export const en = {
 
     // Plan Comparison
     plan: {
-        title: "Monthly Plan Comparison",
-        description: "Current month usage against Claude Code monthly billing limits",
-        currentStatus: "Current Status",
+        title: "Monthly Cost References",
+        description: "API cost estimates compared with $100 / $200 reference amounts, not subscription limits",
+        currentStatus: "Reference Comparison",
         currentUsage: "This Month",
-        thisBillingPeriod: "Current billing month",
+        thisBillingPeriod: "Current calendar month",
         usage: "Usage",
         saving: "remaining",
         over: "over",
-        withinBudget: "Within Budget",
-        moderateUsage: "Moderate Usage",
-        overBudget: "Over Budget",
-        totalSpend: "Monthly Spend",
-        modelCostBreakdown: "Top 3 Model Cost Breakdown",
+        withinBudget: "Below $100 reference",
+        moderateUsage: "Between reference amounts",
+        overBudget: "Above $200 reference",
+        totalSpend: "Estimated Monthly Cost",
+        modelCostBreakdown: "Model Cost Breakdown",
         totalModelCost: "Total Model Cost",
         cacheWrite: "Cache Write",
         cacheRead: "Cache Read"
@@ -67,7 +67,7 @@ export const en = {
     // Key Metrics
     keyMetrics: {
         title: "Key Metrics",
-        avgDailyCost: "Avg Daily Cost",
+        avgDailyCost: "Avg Daily Cost (this month)",
         projectedMonthly: "Projected Monthly",
         costPerMillionTokens: "Cost per Million Tokens",
         modelsUsed: "Models Used",
@@ -87,8 +87,8 @@ export const en = {
     // Recommendations
     recommendations: {
         title: "Recommendations",
-        excellent: "Excellent! You're well within budget.",
-        approachingLimit: "plan limit.",
+        excellent: "Estimated cost is below the reference amount.",
+        approachingLimit: "reference amount.",
         excellentCache: "Excellent cache utilization!",
         increaseCacheUsage: "Increase cache usage to reduce costs",
         usageGrowingRapidly: "Usage growing rapidly - monitor budget",

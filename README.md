@@ -178,7 +178,11 @@ Make sure you have the Claude CLI installed and configured:
 npm install -g ccusage@latest
 ```
 
-The dashboard uses the `ccusage` command to fetch usage statistics.
+The dashboard reads Claude Code logs with `ccusage claude daily --json --breakdown` on multi-agent releases, and `ccusage daily` on older Claude-only releases. Codex and other agents' separate logs are excluded. Models routed through Claude Code remain attributed to their recorded model IDs.
+
+Daily, Sunday-start weekly, and monthly totals are derived from the same report in the server's timezone. Summary cards show the current calendar period; charts and the activity table show its historical series. Costs are API estimates rather than subscription charges or limits. Unpriced models are identified explicitly. INR uses the latest published exchange rate (or a manually entered rate), not historical daily rates.
+
+Run `npm test` for date, scope, model reconciliation, and invalid-data regression tests. The API requires ccusage to be installed; it does not install global packages during requests.
 
 ## 📊 API Endpoints
 

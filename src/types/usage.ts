@@ -20,6 +20,10 @@ export interface DailyUsage {
 }
 
 export interface UsageResponse {
+  unpricedModels?: string[];
+  timezone?: string;
+  asOf?: string;
+  source?: string;
   daily: DailyUsage[];
   weekly?: DailyUsage[];
   monthly?: DailyUsage[];
